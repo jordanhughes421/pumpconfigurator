@@ -427,6 +427,230 @@ async function verifyPhase3(): Promise<boolean> {
   return allPassed;
 }
 
+async function verifyPhase4(): Promise<boolean> {
+  console.log('=== Phase 4 Verification (Material & Certification Engine) ===\n');
+  let allPassed = true;
+
+  // Check seeded data
+  const cmoCount = await prisma.componentMaterialOption.count();
+  const mcCount = await prisma.materialCertification.count();
+  if (cmoCount >= 50) {
+    console.log(`PASS  component_material_option: ${cmoCount} rows (target: 50+)`);
+  } else {
+    console.log(`FAIL  component_material_option: ${cmoCount} rows (need 50+)`);
+    allPassed = false;
+  }
+  if (mcCount >= 30) {
+    console.log(`PASS  material_certification: ${mcCount} rows (target: 30+, expanded from 13)`);
+  } else {
+    console.log(`FAIL  material_certification: ${mcCount} rows (need 30+)`);
+    allPassed = false;
+  }
+  console.log();
+
+  // Find a sample OH1 wetted component (casing — wetted + pressure boundary)
+  const casingDef = await prisma.componentDefinition.findFirst({
+    where: { hiTypeCode: 'OH1', componentKey: 'casing' },
+  });
+  if (!casingDef) {
+    console.log('FAIL  Could not find OH1 casing component definition');
+    return false;
+  }
+
+  // Find a sample OH1 wetted non-pressure component (impeller)
+  const impellerDef = await prisma.componentDefinition.findFirst({
+    where: { hiTypeCode: 'OH1', componentKey: 'impeller' },
+  });
+
+  try {
+    // Test 1: Unfiltered materials for casing
+    console.log('Testing GET /api/materials/options (no filters)...');
+    const baseRes = await fetch(`${API_BASE}/api/materials/options?componentDefId=${casingDef.id}`);
+    const baseData = await baseRes.json() as any;
+
+    if (!baseRes.ok) {
+      console.log(`FAIL  Materials options returned ${baseRes.status}: ${JSON.stringify(baseData)}`);
+      allPassed = false;
+    } else {
+      const count = baseData.materials?.length ?? 0;
+      console.log(`PASS  Unfiltered materials for casing: ${count} options`);
+      if (baseData.total_before_filtering !== undefined && baseData.total_after_filtering !== undefined) {
+        console.log(`      Before: ${baseData.total_before_filtering}, After: ${baseData.total_after_filtering}`);
+      }
+
+      // Check shape
+      const first = baseData.materials?.[0];
+      if (first && 'is_default' in first && 'cost_tier' in first) {
+        console.log('PASS  Materials have is_default and cost_tier fields');
+      } else {
+        console.log('FAIL  Materials missing is_default or cost_tier');
+        allPassed = false;
+      }
+    }
+
+    // Test 2: NSF61 filter — should annotate coating requirements
+    console.log('\nTesting NSF61 filter...');
+    const nsf61Res = await fetch(`${API_BASE}/api/materials/options?componentDefId=${casingDef.id}&certs=NSF61`);
+    const nsf61Data = await nsf61Res.json() as any;
+    if (nsf61Res.ok) {
+      const mats = nsf61Data.materials || [];
+      console.log(`PASS  NSF61 filtered materials: ${mats.length} of ${nsf61Data.total_before_filtering}`);
+
+      // Check cast iron has requires_coating
+      const castIron = mats.find((m: any) => m.material_code === 'CI_A48_CL30');
+      if (castIron && castIron.requires_coating === true) {
+        console.log('PASS  Cast iron annotated with requires_coating: true');
+      } else if (castIron) {
+        console.log('FAIL  Cast iron missing requires_coating annotation');
+        allPassed = false;
+      }
+    }
+
+    // Test 3: NSF61 + NSF372 — leaded bronze should be excluded
+    console.log('\nTesting NSF61+NSF372 filter (should exclude leaded bronze)...');
+    const nsf372Res = await fetch(`${API_BASE}/api/materials/options?componentDefId=${impellerDef!.id}&certs=NSF61,NSF372`);
+    const nsf372Data = await nsf372Res.json() as any;
+    if (nsf372Res.ok) {
+      const mats = nsf372Data.materials || [];
+      const leadedBronze = mats.find((m: any) => m.material_code === 'BRZ_C83600');
+      if (!leadedBronze) {
+        console.log(`PASS  Leaded bronze (C83600) excluded by NSF372 — ${mats.length} materials remain`);
+      } else {
+        console.log('FAIL  Leaded bronze (C83600) should be excluded by NSF372');
+        allPassed = false;
+      }
+
+      // Check mutual requirement expansion (NSF372 should auto-include NSF61)
+      const certsApplied = nsf372Data.certifications_applied || [];
+      if (certsApplied.includes('NSF61') && certsApplied.includes('NSF372')) {
+        console.log('PASS  Mutual requirement expansion: NSF372 auto-included NSF61');
+      } else {
+        console.log(`FAIL  Expected both NSF61 and NSF372 in certifications_applied, got: ${certsApplied}`);
+        allPassed = false;
+      }
+    }
+
+    // Test 4: BABA — should annotate but not remove any
+    // Use impeller (has both ferrous and non-ferrous/bronze options) for diverse BABA statuses
+    console.log('\nTesting BABA annotation...');
+    const babaCompId = impellerDef!.id; // impeller has bronze (non-ferrous) + iron (ferrous)
+    const babaBaseRes = await fetch(`${API_BASE}/api/materials/options?componentDefId=${babaCompId}`);
+    const babaBaseData = await babaBaseRes.json() as any;
+    const babaRes = await fetch(`${API_BASE}/api/materials/options?componentDefId=${babaCompId}&certs=BABA`);
+    const babaData = await babaRes.json() as any;
+    if (babaRes.ok) {
+      const mats = babaData.materials || [];
+      // BABA should NOT filter out materials
+      if (mats.length === babaBaseData.materials?.length) {
+        console.log('PASS  BABA does not remove any materials');
+      } else {
+        console.log(`FAIL  BABA removed materials: ${mats.length} vs ${babaBaseData.materials?.length}`);
+        allPassed = false;
+      }
+
+      const hasCompliant = mats.some((m: any) => m.baba_status === 'compliant');
+      const hasExempt = mats.some((m: any) => m.baba_status === 'exempt');
+      if (hasCompliant && hasExempt) {
+        console.log('PASS  BABA annotates: at least one compliant and one exempt');
+      } else {
+        console.log(`FAIL  BABA annotation incomplete: compliant=${hasCompliant}, exempt=${hasExempt}`);
+        allPassed = false;
+      }
+    }
+
+    // Test 5: API610 on pressure-boundary component — cast iron excluded
+    console.log('\nTesting API610 on pressure-boundary component...');
+    const api610Res = await fetch(`${API_BASE}/api/materials/options?componentDefId=${casingDef.id}&certs=API610`);
+    const api610Data = await api610Res.json() as any;
+    if (api610Res.ok) {
+      const mats = api610Data.materials || [];
+      const hasCastIron = mats.some((m: any) => m.material_group === 'cast_iron');
+      if (!hasCastIron) {
+        console.log(`PASS  API610 excluded cast iron from pressure boundary — ${mats.length} materials remain`);
+      } else {
+        console.log('FAIL  API610 should exclude cast iron from pressure boundary');
+        allPassed = false;
+      }
+    }
+
+    // Test 6: Validation — valid selection, no certs
+    console.log('\nTesting POST /api/materials/validate (valid selection, no certs)...');
+    // Get default materials for a few components
+    const oh1CompsForValid = await prisma.componentDefinition.findMany({
+      where: { hiTypeCode: 'OH1', isRequired: true },
+    });
+    const defaultOptions = await prisma.componentMaterialOption.findMany({
+      where: {
+        componentDefId: { in: oh1CompsForValid.map(c => c.id) },
+        isDefault: true,
+      },
+      include: { componentDef: true },
+    });
+
+    const validSelections = defaultOptions.map(opt => ({
+      component_key: opt.componentDef.componentKey,
+      material_id: opt.materialId,
+    }));
+
+    const validRes = await fetch(`${API_BASE}/api/materials/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hi_type_code: 'OH1',
+        certifications: [],
+        selections: validSelections,
+      }),
+    });
+    const validData = await validRes.json() as any;
+    if (validRes.ok && validData.status === 'valid') {
+      console.log('PASS  Valid selection with no certs returns status: valid');
+    } else {
+      console.log(`FAIL  Expected valid status, got: ${validData.status} (${JSON.stringify(validData.messages?.slice(0, 2))})`);
+      allPassed = false;
+    }
+
+    // Test 7: Validation — missing required component → hard_block
+    console.log('\nTesting validation: missing required component...');
+    const partialSelections = validSelections.slice(0, 1); // Only one component
+    const missingRes = await fetch(`${API_BASE}/api/materials/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hi_type_code: 'OH1',
+        certifications: [],
+        selections: partialSelections,
+      }),
+    });
+    const missingData = await missingRes.json() as any;
+    const hasHardBlock = (missingData.messages || []).some((m: any) => m.tier === 'hard_block' && m.code === 'MISSING_MATERIAL');
+    if (hasHardBlock) {
+      console.log(`PASS  Missing component returns hard_block (${missingData.summary?.hard_blocks} blocks)`);
+    } else {
+      console.log('FAIL  Missing component should return hard_block MISSING_MATERIAL');
+      allPassed = false;
+    }
+
+    // Test 8: Certification constraints endpoint
+    console.log('\nTesting GET /api/certifications/:code/constraints...');
+    const fmRes = await fetch(`${API_BASE}/api/certifications/FM/constraints`);
+    const fmData = await fmRes.json() as any;
+    if (fmRes.ok && fmData.certification && fmData.certification.code === 'FM') {
+      console.log(`PASS  FM constraints returned: ${fmData.certification.full_name}`);
+      console.log(`      Motor constraints: ${fmData.motor_constraints?.length ?? 0}, Baseplate: ${fmData.baseplate_constraints?.length ?? 0}`);
+    } else {
+      console.log(`FAIL  FM constraints: ${fmRes.status}`);
+      allPassed = false;
+    }
+
+  } catch (err: any) {
+    console.log(`FAIL  Could not reach API at ${API_BASE} — is the server running?`);
+    console.log(`      Error: ${err.message}`);
+    return allPassed;
+  }
+
+  return allPassed;
+}
+
 async function main() {
   console.log('=== Magnum Opus Verification ===\n');
 
@@ -435,13 +659,16 @@ async function main() {
   const phase2Passed = await verifyPhase2();
   console.log();
   const phase3Passed = await verifyPhase3();
+  console.log();
+  const phase4Passed = await verifyPhase4();
 
   console.log('\n=== Results ===');
   console.log(`Phase 1: ${phase1Passed ? 'PASS' : 'FAIL'}`);
   console.log(`Phase 2: ${phase2Passed ? 'PASS' : 'FAIL'}`);
   console.log(`Phase 3: ${phase3Passed ? 'PASS' : 'FAIL'}`);
+  console.log(`Phase 4: ${phase4Passed ? 'PASS' : 'FAIL'}`);
 
-  if (phase1Passed && phase2Passed && phase3Passed) {
+  if (phase1Passed && phase2Passed && phase3Passed && phase4Passed) {
     console.log('\nAll checks passed.');
     process.exit(0);
   } else {

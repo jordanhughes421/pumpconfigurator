@@ -8,6 +8,7 @@ import { importComponentDefinitions } from './importers/componentDefinitionsImpo
 import { importMaterials } from './importers/materialsImporter.js';
 import { importMaterialCertifications } from './importers/materialCertificationsImporter.js';
 import { samplePerformanceCurves } from './fixtures/performanceCurves.js';
+import { COMPONENT_MATERIAL_MAP } from './fixtures/componentMaterialOptions.js';
 
 const prisma = new PrismaClient();
 
@@ -207,6 +208,58 @@ async function seedPerformanceCurves() {
   }
 }
 
+async function seedComponentMaterialOptions() {
+  console.log('Seeding component-material options...');
+  let count = 0;
+  for (const [hiTypeCode, components] of Object.entries(COMPONENT_MATERIAL_MAP)) {
+    for (const [componentKey, entry] of Object.entries(components)) {
+      const compDef = await prisma.componentDefinition.findUnique({
+        where: { hiTypeCode_componentKey: { hiTypeCode, componentKey } },
+      });
+      if (!compDef) {
+        console.warn(`  Skipping ${hiTypeCode}/${componentKey} (component not found)`);
+        continue;
+      }
+
+      for (const mat of entry.materials) {
+        const material = await prisma.material.findUnique({
+          where: { materialCode: mat.code },
+        });
+        if (!material) {
+          console.warn(`  Skipping material ${mat.code} (not found)`);
+          continue;
+        }
+
+        // Prisma composite unique with nullable modelId — use findFirst for idempotency
+        const existing = await prisma.componentMaterialOption.findFirst({
+          where: {
+            componentDefId: compDef.id,
+            materialId: material.id,
+            modelId: null,
+          },
+        });
+        if (existing) {
+          await prisma.componentMaterialOption.update({
+            where: { id: existing.id },
+            data: { isDefault: mat.isDefault, costTier: mat.costTier },
+          });
+        } else {
+          await prisma.componentMaterialOption.create({
+            data: {
+              componentDefId: compDef.id,
+              materialId: material.id,
+              isDefault: mat.isDefault,
+              costTier: mat.costTier,
+            },
+          });
+        }
+        count++;
+      }
+    }
+  }
+  console.log(`  Seeded ${count} component-material options`);
+}
+
 async function logCounts() {
   const counts = {
     pump_family: await prisma.pumpFamily.count(),
@@ -216,6 +269,7 @@ async function logCounts() {
     material: await prisma.material.count(),
     certification: await prisma.certification.count(),
     material_certification: await prisma.materialCertification.count(),
+    component_material_option: await prisma.componentMaterialOption.count(),
     performance_curve_set: await prisma.performanceCurveSet.count(),
     curve_data: await prisma.curveData.count(),
   };
@@ -237,6 +291,7 @@ async function main() {
   await seedPumpFamilies();
   await seedComponentDefinitions();
   await seedMaterialCertifications();
+  await seedComponentMaterialOptions();
   await seedPerformanceCurves();
 
   // Layer 2: Import-ready placeholders (currently warn-only)
