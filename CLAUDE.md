@@ -35,7 +35,7 @@ pumpconfigurator/
 │   ├── api/          # Express API + Prisma ORM (Phase 1-3 complete)
 │   │   ├── src/
 │   │   │   ├── routes/       # pumps, materials, certifications, components, curves
-│   │   │   ├── services/     # selectionEngine, curveEngine
+│   │   │   ├── services/     # selectionEngine, curveEngine, materialEngine, certificationEngine, validationEngine
 │   │   │   └── middleware/   # validateRequest
 │   │   ├── prisma/
 │   │   │   ├── schema.prisma # 20+ tables
@@ -60,7 +60,7 @@ pumpconfigurator/
 1. **Database, Seed Data & Core Types** ✅ — Prisma schema (20+ tables), migrations, seed pipeline (3 families, 5 models, 12 sizes, 25 components, 8 materials, 14 certs), shared types/constants, read-only API
 2. **Selection Engine API** ✅ — POST duty point → ranked pump candidates with BEP/efficiency/NPSH scoring, constraint filtering, detail endpoints
 3. **Performance Curve Engine** ✅ — Polynomial/spline/linear evaluation, affinity law scaling (speed + trim), Brent's method operating point solver, 3 API endpoints, sample curves for all 12 sizes
-4. **Material Selection & Certification Engine** — Per-component filtering with certification constraint propagation
+4. **Material Selection & Certification Engine** ✅ — 5-step material filtering pipeline, 14 certification rules (NSF61/372/BABA/FM/API610/ATEX/etc.), validation engine (completeness, lead average, BABA, galvanic), 83 component-material options, 32 cert mappings
 5. **Configuration UI** — Full configurator with tabs (Hydraulic, Materials, Motor, Baseplate, Compliance)
 6. **Geometry/Curve Customization Module** — Geometry data entry, modification tracking, correlation analysis
 

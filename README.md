@@ -66,6 +66,14 @@ The API runs at `http://localhost:3001`.
 | `/api/curves/:sizeId/scaled` | GET | Scaled curves with `?speed=` and/or `?diameter=` (affinity laws) |
 | `/api/curves/operating-point` | POST | Solve pump–system intersection (Brent's method) |
 
+### Material & Certification Engine (Phase 4)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/materials/options` | GET | Filtered materials for a component: `?componentDefId=X&certs=NSF61,BABA&tempC=60` |
+| `/api/materials/validate` | POST | Validate a complete set of material selections against certifications |
+| `/api/certifications/:code/constraints` | GET | Get motor + baseplate constraints for a certification |
+
 ### Reference Data (Phase 1)
 
 | Endpoint | Method | Description |
@@ -152,7 +160,8 @@ The database ships with sample data clearly labeled with `[SAMPLE]` prefixes:
 | `component_definition` | 25 | OH1 (19) + BB1 (6 partial) |
 | `material` | 8 | Cast iron, ductile iron, 304/316 SS, carbon steel, bronzes, duplex SS |
 | `certification` | 14 | All 14 from spec (NSF61, NSF372, BABA, FM, API610, etc.) |
-| `material_certification` | 13 | Sample mappings demonstrating certification filtering logic |
+| `material_certification` | 32 | 8 materials × NSF61/NSF372/API610/WRAS/CE_PED certifications |
+| `component_material_option` | 83 | Per-component material assignments with defaults and cost tiers |
 | `performance_curve_set` | 12 | One reference curve set per pump size |
 | `curve_data` | 48 | 4 curves (HQ, EQ, PQ, NPSHR) per curve set |
 
@@ -163,6 +172,6 @@ Full data import stubs exist at `apps/api/prisma/seed/importers/` for the comple
 - **Phase 1** ✓ Monorepo, database schema (20+ tables), seed pipeline, shared types/constants, read-only API
 - **Phase 2** ✓ Selection engine API — duty point search, scoring (BEP/efficiency/NPSH), constraint filtering, detail endpoints
 - **Phase 3** ✓ Performance curve engine — polynomial/spline evaluation, affinity law scaling, Brent's method operating point solver
-- **Phase 4** — Material selection & certification engine
+- **Phase 4** ✓ Material selection & certification engine — per-component filtering, 14 cert rules, validation (completeness/lead/BABA/galvanic)
 - **Phase 5** — Configuration UI
 - **Phase 6** — Geometry/curve customization module
