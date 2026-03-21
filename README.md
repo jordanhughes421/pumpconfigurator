@@ -58,6 +58,14 @@ The API runs at `http://localhost:3001`.
 | `/api/pumps/models/:id` | GET | Model detail with nested sizes and parent family |
 | `/api/pumps/sizes/:id` | GET | Size detail with model, family, and curve sets |
 
+### Performance Curves (Phase 3)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/curves/:sizeId` | GET | Reference curve set (HQ, EQ, PQ, NPSHR) for a pump size |
+| `/api/curves/:sizeId/scaled` | GET | Scaled curves with `?speed=` and/or `?diameter=` (affinity laws) |
+| `/api/curves/operating-point` | POST | Solve pump–system intersection (Brent's method) |
+
 ### Reference Data (Phase 1)
 
 | Endpoint | Method | Description |
@@ -92,6 +100,23 @@ curl -s -X POST http://localhost:3001/api/pumps/search \
 
 Returns ranked `PumpCandidate[]` sorted by score. Each candidate includes BEP%, operating region (POR/AOR/outside), efficiency, NPSH margin, and scoring breakdown.
 
+### Example: Operating Point
+
+```bash
+# First get a curve set ID from a pump size
+CURVE_SET_ID=$(curl -s http://localhost:3001/api/pumps/sizes/<sizeId> | jq -r '.curveSets[0].id')
+
+# Solve operating point against a system curve
+curl -s -X POST http://localhost:3001/api/curves/operating-point \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "curveSetId": "'$CURVE_SET_ID'",
+    "systemCurve": { "h_static": 10, "k_friction": 0.003 }
+  }'
+```
+
+Returns the intersection point with flow (Q), head (H), efficiency (η%), power (kW), NPSHr, BEP%, and operating region.
+
 ## Project Structure
 
 ```
@@ -100,17 +125,17 @@ pumpconfigurator/
 │   ├── api/                    # Express API + Prisma ORM
 │   │   ├── src/
 │   │   │   ├── routes/         # Express route handlers
-│   │   │   ├── services/       # Business logic (selection engine)
+│   │   │   ├── services/       # Business logic (selection engine, curve engine)
 │   │   │   └── middleware/     # Request validation
 │   │   ├── prisma/
 │   │   │   ├── schema.prisma   # 20+ tables (pumps, materials, certs, geometry)
 │   │   │   ├── migrations/
 │   │   │   └── seed/           # Seed fixtures + importer stubs
 │   │   └── scripts/
-│   │       └── verify.ts       # Smoke test (Phase 1 + 2 checks)
+│   │       └── verify.ts       # Smoke test (Phase 1 + 2 + 3 checks)
 │   └── web/                    # React frontend (Phase 5)
 ├── packages/
-│   └── shared/                 # Shared TypeScript types & constants (ESM + CJS)
+│   └── shared/                 # Shared types, constants, curve math (ESM + CJS)
 ├── docker-compose.yml          # PostgreSQL 16
 └── pnpm-workspace.yaml
 ```
@@ -128,6 +153,8 @@ The database ships with sample data clearly labeled with `[SAMPLE]` prefixes:
 | `material` | 8 | Cast iron, ductile iron, 304/316 SS, carbon steel, bronzes, duplex SS |
 | `certification` | 14 | All 14 from spec (NSF61, NSF372, BABA, FM, API610, etc.) |
 | `material_certification` | 13 | Sample mappings demonstrating certification filtering logic |
+| `performance_curve_set` | 12 | One reference curve set per pump size |
+| `curve_data` | 48 | 4 curves (HQ, EQ, PQ, NPSHR) per curve set |
 
 Full data import stubs exist at `apps/api/prisma/seed/importers/` for the complete 380+ components, 117+ materials, and certification mappings from the Magnum Opus spec.
 
@@ -135,7 +162,7 @@ Full data import stubs exist at `apps/api/prisma/seed/importers/` for the comple
 
 - **Phase 1** ✓ Monorepo, database schema (20+ tables), seed pipeline, shared types/constants, read-only API
 - **Phase 2** ✓ Selection engine API — duty point search, scoring (BEP/efficiency/NPSH), constraint filtering, detail endpoints
-- **Phase 3** — Performance curve engine
+- **Phase 3** ✓ Performance curve engine — polynomial/spline evaluation, affinity law scaling, Brent's method operating point solver
 - **Phase 4** — Material selection & certification engine
 - **Phase 5** — Configuration UI
 - **Phase 6** — Geometry/curve customization module

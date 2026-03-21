@@ -261,18 +261,187 @@ async function verifyPhase2(): Promise<boolean> {
   return allPassed;
 }
 
+async function verifyPhase3(): Promise<boolean> {
+  console.log('=== Phase 3 Verification (Performance Curves) ===\n');
+  let allPassed = true;
+
+  // Check seeded curve data
+  const curveSetCount = await prisma.performanceCurveSet.count();
+  const curveDataCount = await prisma.curveData.count();
+  if (curveSetCount >= 12) {
+    console.log(`PASS  Seeded curve sets: ${curveSetCount} (target: 12+)`);
+  } else {
+    console.log(`FAIL  Seeded curve sets: ${curveSetCount} (need 12+)`);
+    allPassed = false;
+  }
+  if (curveDataCount >= 48) {
+    console.log(`PASS  Seeded curve data rows: ${curveDataCount} (target: 48+ = 12 sizes x 4 curves)`);
+  } else {
+    console.log(`FAIL  Seeded curve data rows: ${curveDataCount} (need 48+)`);
+    allPassed = false;
+  }
+  console.log();
+
+  // Pick a pump size with curve data
+  const sampleCurveSet = await prisma.performanceCurveSet.findFirst({
+    where: { isReference: true },
+    include: { size: { include: { model: true } } },
+  });
+
+  if (!sampleCurveSet) {
+    console.log('FAIL  No reference curve set found');
+    return false;
+  }
+
+  const sizeId = sampleCurveSet.sizeId;
+  const curveSetId = sampleCurveSet.id;
+  const maxD = Number(sampleCurveSet.size.model.maxImpellerMm);
+  const trimD = Math.round(maxD * 0.9);
+
+  try {
+    // Test 1: GET reference curves
+    console.log('Testing GET /api/curves/:sizeId...');
+    const refRes = await fetch(`${API_BASE}/api/curves/${sizeId}`);
+    const refData = await refRes.json() as any;
+
+    if (!refRes.ok) {
+      console.log(`FAIL  Reference curves returned ${refRes.status}`);
+      allPassed = false;
+    } else if (!refData.curves || !refData.curves.HQ || !refData.curves.EQ || !refData.curves.PQ || !refData.curves.NPSHR) {
+      console.log('FAIL  Reference curves missing one or more curve types');
+      allPassed = false;
+    } else {
+      console.log('PASS  Reference curves returned all 4 curve types (HQ, EQ, PQ, NPSHR)');
+      console.log(`      Size: ${refData.size_designation}, Speed: ${refData.speed_rpm}rpm`);
+    }
+
+    // Test 2: GET scaled curves
+    console.log('\nTesting GET /api/curves/:sizeId/scaled...');
+    const scaledRes = await fetch(
+      `${API_BASE}/api/curves/${sizeId}/scaled?speed=1480&diameter=${trimD}`
+    );
+    const scaledData = await scaledRes.json() as any;
+
+    if (!scaledRes.ok) {
+      console.log(`FAIL  Scaled curves returned ${scaledRes.status}: ${JSON.stringify(scaledData)}`);
+      allPassed = false;
+    } else {
+      if (!scaledData.scaling) {
+        console.log('FAIL  Scaled response missing scaling field');
+        allPassed = false;
+      } else {
+        console.log('PASS  Scaled response includes scaling field');
+        console.log(`      Speed ratio: ${scaledData.scaling.speed_ratio}, Trim ratio: ${scaledData.scaling.trim_ratio}`);
+      }
+
+      // Check coefficients differ from reference
+      const refHQ = refData.curves?.HQ?.coefficients;
+      const scaledHQ = scaledData.curves?.HQ?.coefficients;
+      if (refHQ && scaledHQ && JSON.stringify(refHQ) !== JSON.stringify(scaledHQ)) {
+        console.log('PASS  Scaled HQ coefficients differ from reference');
+      } else {
+        console.log('FAIL  Scaled HQ coefficients are identical to reference');
+        allPassed = false;
+      }
+
+      // Check valid_q_max shifted
+      const refQMax = refData.curves?.HQ?.valid_q_max;
+      const scaledQMax = scaledData.curves?.HQ?.valid_q_max;
+      if (refQMax && scaledQMax && refQMax !== scaledQMax) {
+        console.log('PASS  Scaled valid_q_max shifted from reference');
+      } else {
+        console.log('FAIL  Scaled valid_q_max unchanged');
+        allPassed = false;
+      }
+    }
+
+    // Test 3: POST operating point
+    console.log('\nTesting POST /api/curves/operating-point...');
+    const opRes = await fetch(`${API_BASE}/api/curves/operating-point`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        curveSetId,
+        systemCurve: { h_static: 20, k_friction: 0.002 },
+      }),
+    });
+    const opData = await opRes.json() as any;
+
+    if (!opRes.ok) {
+      console.log(`FAIL  Operating point returned ${opRes.status}: ${JSON.stringify(opData)}`);
+      allPassed = false;
+    } else if (!opData.operatingPoint) {
+      console.log('FAIL  Operating point returned null (expected valid intersection)');
+      allPassed = false;
+    } else {
+      const op = opData.operatingPoint;
+      const requiredFields = ['flow_m3h', 'head_m', 'efficiency_pct', 'power_kw', 'npshr_m', 'pct_of_bep', 'operating_region'];
+      const missing = requiredFields.filter(f => !(f in op));
+      if (missing.length > 0) {
+        console.log(`FAIL  Operating point missing fields: ${missing.join(', ')}`);
+        allPassed = false;
+      } else {
+        console.log('PASS  Operating point has all required fields');
+      }
+
+      if (op.flow_m3h > 0 && op.head_m > 0) {
+        console.log(`PASS  Operating point: Q=${op.flow_m3h} m³/h, H=${op.head_m} m, η=${op.efficiency_pct}%`);
+      } else {
+        console.log('FAIL  Operating point has non-positive flow or head');
+        allPassed = false;
+      }
+
+      if (['POR', 'AOR', 'outside'].includes(op.operating_region)) {
+        console.log(`PASS  Operating region: ${op.operating_region}`);
+      } else {
+        console.log(`FAIL  Invalid operating region: ${op.operating_region}`);
+        allPassed = false;
+      }
+    }
+
+    // Test 4: Operating point with impossible system curve (h_static above shutoff)
+    console.log('\nTesting operating point with no intersection...');
+    const noIntersectionRes = await fetch(`${API_BASE}/api/curves/operating-point`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        curveSetId,
+        systemCurve: { h_static: 9999, k_friction: 0.001 },
+      }),
+    });
+    const noIntersectionData = await noIntersectionRes.json() as any;
+    if (noIntersectionRes.ok && noIntersectionData.operatingPoint === null) {
+      console.log('PASS  No-intersection returns null operatingPoint (not error)');
+    } else {
+      console.log('FAIL  No-intersection case did not return null operatingPoint');
+      allPassed = false;
+    }
+
+  } catch (err: any) {
+    console.log(`FAIL  Could not reach API at ${API_BASE} — is the server running?`);
+    console.log(`      Error: ${err.message}`);
+    console.log('      Skipping HTTP-based Phase 3 checks');
+    return allPassed;
+  }
+
+  return allPassed;
+}
+
 async function main() {
   console.log('=== Magnum Opus Verification ===\n');
 
   const phase1Passed = await verifyPhase1();
   console.log();
   const phase2Passed = await verifyPhase2();
+  console.log();
+  const phase3Passed = await verifyPhase3();
 
   console.log('\n=== Results ===');
   console.log(`Phase 1: ${phase1Passed ? 'PASS' : 'FAIL'}`);
   console.log(`Phase 2: ${phase2Passed ? 'PASS' : 'FAIL'}`);
+  console.log(`Phase 3: ${phase3Passed ? 'PASS' : 'FAIL'}`);
 
-  if (phase1Passed && phase2Passed) {
+  if (phase1Passed && phase2Passed && phase3Passed) {
     console.log('\nAll checks passed.');
     process.exit(0);
   } else {

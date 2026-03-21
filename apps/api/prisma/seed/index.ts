@@ -7,6 +7,7 @@ import { sampleMaterialCertifications } from './fixtures/materialCertifications.
 import { importComponentDefinitions } from './importers/componentDefinitionsImporter.js';
 import { importMaterials } from './importers/materialsImporter.js';
 import { importMaterialCertifications } from './importers/materialCertificationsImporter.js';
+import { samplePerformanceCurves } from './fixtures/performanceCurves.js';
 
 const prisma = new PrismaClient();
 
@@ -154,6 +155,58 @@ async function seedMaterialCertifications() {
   }
 }
 
+async function seedPerformanceCurves() {
+  console.log('Seeding sample performance curves...');
+  for (const curveSeed of samplePerformanceCurves) {
+    // Find the pump size by designation
+    const pumpSize = await prisma.pumpSize.findFirst({
+      where: { sizeDesignation: curveSeed.sizeDesignation },
+    });
+
+    if (!pumpSize) {
+      console.warn(`  Skipping curves for ${curveSeed.sizeDesignation} (size not found)`);
+      continue;
+    }
+
+    // Check if curve set already exists
+    const existing = await prisma.performanceCurveSet.findFirst({
+      where: {
+        sizeId: pumpSize.id,
+        speedRpm: curveSeed.speedRpm,
+        impellerDiameterMm: curveSeed.impellerDiameterMm,
+      },
+    });
+
+    if (existing) continue; // Idempotent
+
+    const curveSet = await prisma.performanceCurveSet.create({
+      data: {
+        sizeId: pumpSize.id,
+        speedRpm: curveSeed.speedRpm,
+        impellerDiameterMm: curveSeed.impellerDiameterMm,
+        source: 'sample',
+        isReference: true,
+      },
+    });
+
+    for (const [curveType, curveData] of Object.entries(curveSeed.curves)) {
+      await prisma.curveData.create({
+        data: {
+          curveSetId: curveSet.id,
+          curveType,
+          representation: 'polynomial',
+          coefficients: curveData.coefficients,
+          degree: curveData.coefficients.length - 1,
+          xUnit: 'm3/h',
+          yUnit: curveData.yUnit,
+          validQMin: curveData.validQMin,
+          validQMax: curveData.validQMax,
+        },
+      });
+    }
+  }
+}
+
 async function logCounts() {
   const counts = {
     pump_family: await prisma.pumpFamily.count(),
@@ -163,6 +216,8 @@ async function logCounts() {
     material: await prisma.material.count(),
     certification: await prisma.certification.count(),
     material_certification: await prisma.materialCertification.count(),
+    performance_curve_set: await prisma.performanceCurveSet.count(),
+    curve_data: await prisma.curveData.count(),
   };
 
   console.log('\n--- Seed Complete ---');
@@ -182,6 +237,7 @@ async function main() {
   await seedPumpFamilies();
   await seedComponentDefinitions();
   await seedMaterialCertifications();
+  await seedPerformanceCurves();
 
   // Layer 2: Import-ready placeholders (currently warn-only)
   console.log('\n--- Layer 2: Full data importers ---');
