@@ -13,38 +13,53 @@ Two spec documents live in the repo root — read these before building anything
 - **`Magnum Opus - Implementation Spec for Claude Code.md`** — Actionable build spec: schemas, interfaces, algorithms, component trees, phased build plan. This tells you WHAT to build.
 - **`Magnum Opus - Comprehensive Pump Design and Configuration Application.md`** — Full engineering reference (~4,400 lines, 9 sections, 4 appendices). This tells you WHY. Consult it for domain context, engineering rationale, certification constraint details, and seed data (Appendix B: 117+ materials, Section 1.5: 380+ component definitions).
 
-## Tech Stack
+## Tech Stack (as implemented)
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18+ / TypeScript 5+ / Tailwind CSS 3+ |
-| State | Zustand 4+ |
-| Charting | D3.js v7 with React wrapper |
-| API | Node.js 20+ / Express or Fastify / TypeScript |
-| Database | PostgreSQL 16+ with JSONB |
-| ORM | Prisma or Drizzle |
-| Compute | Python 3.11+ / FastAPI (curve fitting, viscosity correction, ML) |
-| Cache | Redis 7+ |
-| Monorepo | Turborepo or pnpm workspaces |
+| Frontend | React 18+ / TypeScript 5+ / Tailwind CSS 3+ (Phase 5) |
+| State | Zustand 4+ (Phase 5) |
+| Charting | D3.js v7 with React wrapper (Phase 5) |
+| API | Node.js 20+ / Express / TypeScript |
+| Database | PostgreSQL 16 (Docker Compose) |
+| ORM | Prisma |
+| Compute | Python 3.11+ / FastAPI (Phase 6 — not yet needed) |
+| Cache | Redis 7+ (Phase 4 — not yet needed) |
+| Monorepo | pnpm workspaces |
 
 ## Project Structure
 
 ```
-magnum-opus/
+pumpconfigurator/
 ├── apps/
-│   ├── web/          # React frontend
-│   ├── api/          # Node.js backend
-│   └── compute/      # Python microservice (FastAPI)
+│   ├── api/          # Express API + Prisma ORM (Phase 1-3 complete)
+│   │   ├── src/
+│   │   │   ├── routes/       # pumps, materials, certifications, components, curves
+│   │   │   ├── services/     # selectionEngine, curveEngine
+│   │   │   └── middleware/   # validateRequest
+│   │   ├── prisma/
+│   │   │   ├── schema.prisma # 20+ tables
+│   │   │   └── seed/         # Fixtures + importer stubs
+│   │   └── scripts/verify.ts # Smoke tests for all phases
+│   ├── web/          # React frontend (Phase 5 — not started)
+│   └── compute/      # Python microservice (Phase 6 — not started)
 ├── packages/
-│   └── shared/       # Shared TypeScript types & constants
-└── package.json
+│   └── shared/       # Types, constants, curve math (dual ESM + CJS)
+│       └── src/
+│           ├── constants.ts      # HI types, certs, materials, etc.
+│           ├── types.ts          # 15 interfaces (DutyPoint, CurveSet, etc.)
+│           ├── curveEngine.ts    # Polynomial (Horner), cubic spline, linear interp
+│           ├── affinityLaws.ts   # Speed/trim scaling with Pfleiderer correction
+│           └── operatingPoint.ts # Brent's method solver
+├── docker-compose.yml  # PostgreSQL 16
+└── pnpm-workspace.yaml
 ```
 
 ## Build Phases
 
-1. **Database, Seed Data & Core Types** — Schema, migrations, seed 380+ components + 117+ materials + 14 certifications, shared types
-2. **Selection Engine API** — POST duty point → ranked pump candidates
-3. **Performance Curve Engine** — Curve evaluation, affinity law scaling, Brent's method operating point solver
+1. **Database, Seed Data & Core Types** ✅ — Prisma schema (20+ tables), migrations, seed pipeline (3 families, 5 models, 12 sizes, 25 components, 8 materials, 14 certs), shared types/constants, read-only API
+2. **Selection Engine API** ✅ — POST duty point → ranked pump candidates with BEP/efficiency/NPSH scoring, constraint filtering, detail endpoints
+3. **Performance Curve Engine** ✅ — Polynomial/spline/linear evaluation, affinity law scaling (speed + trim), Brent's method operating point solver, 3 API endpoints, sample curves for all 12 sizes
 4. **Material Selection & Certification Engine** — Per-component filtering with certification constraint propagation
 5. **Configuration UI** — Full configurator with tabs (Hydraulic, Materials, Motor, Baseplate, Compliance)
 6. **Geometry/Curve Customization Module** — Geometry data entry, modification tracking, correlation analysis
@@ -60,12 +75,27 @@ magnum-opus/
 - **Affinity law accuracy degrades below 80% trim ratio.** Warn when trim ratio < 0.80.
 - **BB1 radial bearings are ball bearings** (not sleeve). BB2/BB3/BB5 use sleeve journal + tilting-pad thrust at larger sizes.
 
+## Common Commands
+
+```bash
+pnpm --filter @magnum-opus/shared build    # Build shared package (must run before API)
+pnpm --filter @magnum-opus/api dev         # Start API dev server (port 3001)
+pnpm --filter @magnum-opus/api seed        # Seed database
+pnpm --filter @magnum-opus/api verify      # Run all phase smoke tests
+docker compose up -d                        # Start PostgreSQL
+```
+
+To reset the database:
+```bash
+PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes" pnpm --filter @magnum-opus/api exec prisma migrate reset --force
+```
+
 ## Key Architectural Patterns
 
 - **Three-layer pump abstraction:** Universal Pump Interface → Flow-Regime Behaviors → Type-Specific Logic. Adding a new HI type requires one class, one factory registration, and DB entries — no schema changes.
 - **Hybrid configuration engine:** Forward-chaining rule engine for discrete decisions (type selection, material filtering, certification enforcement) + continuous constraint solver for impeller trim, speed, and staging optimization.
 - **Four-tier validation:** `hard_block` → `cert_block` → `warning` → `advisory`.
-- **Client-side curve math:** `curveEngine.ts` (polynomial/spline/point evaluation), `affinityLaws.ts` (speed/trim scaling), `operatingPoint.ts` (Brent's method solver) all run in-browser for real-time interaction.
+- **Shared curve math (dual-use):** `curveEngine.ts`, `affinityLaws.ts`, `operatingPoint.ts` in `packages/shared/` — used server-side today, designed to also run client-side for real-time slider interaction in Phase 5.
 
 ## HI Pump Types
 
