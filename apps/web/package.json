@@ -1,0 +1,13 @@
+{
+  "name": "@magnum-opus/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Web app not yet implemented — Phase 5'",
+    "build": "echo 'Web app not yet implemented — Phase 5'"
+  },
+  "dependencies": {
+    "@magnum-opus/shared": "workspace:*"
+  }
+}

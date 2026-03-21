@@ -1,0 +1,15 @@
+.claude/
+node_modules/
+dist/
+.env
+*.tsbuildinfo
+.turbo/
+
+# Build artifacts that may leak into src/
+*.js.map
+*.d.ts.map
+packages/shared/src/*.js
+packages/shared/src/*.d.ts
+
+# Prisma
+apps/api/prisma/migrations/**/migration_lock.toml
