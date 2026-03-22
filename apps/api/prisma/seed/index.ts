@@ -11,6 +11,8 @@ import { samplePerformanceCurves } from './fixtures/performanceCurves.js';
 import { COMPONENT_MATERIAL_MAP } from './fixtures/componentMaterialOptions.js';
 import { sampleMotorOptions, sampleBaseplateOptions } from './fixtures/motorOptions.js';
 import { sampleImpellers, sampleVolutes, sampleModifications, sampleTestResults } from './fixtures/geometryData.js';
+import { corePropertyDefs } from './fixtures/componentProperties.js';
+import { lubricationRules } from './fixtures/lubricationRules.js';
 
 const prisma = new PrismaClient();
 
@@ -467,6 +469,65 @@ async function seedGeometryData() {
   console.log(`  Seeded ${testCount} geometry test results`);
 }
 
+async function seedComponentProperties() {
+  console.log('Seeding core component property definitions...');
+  let count = 0;
+  for (const [hiTypeCode, defs] of Object.entries(corePropertyDefs)) {
+    for (let i = 0; i < defs.length; i++) {
+      const [componentKey, propertyKey, displayName, unit, dataType] = defs[i];
+      const compDef = await prisma.componentDefinition.findUnique({
+        where: { hiTypeCode_componentKey: { hiTypeCode, componentKey } },
+      });
+      if (!compDef) continue; // Component doesn't exist for this HI type — skip
+
+      const existing = await prisma.componentPropertyDef.findUnique({
+        where: { componentDefId_propertyKey: { componentDefId: compDef.id, propertyKey } },
+      });
+      if (existing) continue;
+
+      await prisma.componentPropertyDef.create({
+        data: {
+          componentDefId: compDef.id,
+          propertyKey,
+          displayName,
+          unit: unit ?? null,
+          dataType,
+          displayOrder: i,
+        },
+      });
+      count++;
+    }
+  }
+  console.log(`  Seeded ${count} component property definitions`);
+}
+
+async function seedLubricationRules() {
+  console.log('Seeding lubrication constraint rules...');
+  let count = 0;
+  for (const rule of lubricationRules) {
+    const existing = await prisma.configurationRule.findFirst({
+      where: {
+        ruleType: rule.ruleType,
+        parameterName: rule.parameterName,
+        condition: { equals: rule.condition },
+      },
+    });
+    if (existing) continue;
+
+    await prisma.configurationRule.create({
+      data: {
+        ruleType: rule.ruleType,
+        parameterName: rule.parameterName,
+        condition: rule.condition,
+        action: rule.action,
+        description: rule.description,
+      },
+    });
+    count++;
+  }
+  console.log(`  Seeded ${count} lubrication rules`);
+}
+
 async function logCounts() {
   const counts = {
     pump_family: await prisma.pumpFamily.count(),
@@ -487,6 +548,8 @@ async function logCounts() {
     volute_geometry: await prisma.voluteGeometry.count(),
     geometry_modification: await prisma.geometryModification.count(),
     geometry_test_result: await prisma.geometryTestResult.count(),
+    component_property_def: await prisma.componentPropertyDef.count(),
+    configuration_rule: await prisma.configurationRule.count(),
   };
 
   console.log('\n--- Seed Complete ---');
@@ -510,6 +573,8 @@ async function main() {
   await seedPerformanceCurves();
   await seedMotorsAndBaseplates();
   await seedGeometryData();
+  await seedComponentProperties();
+  await seedLubricationRules();
 
   // Layer 2: Import-ready placeholders (currently warn-only)
   console.log('\n--- Layer 2: Full data importers ---');

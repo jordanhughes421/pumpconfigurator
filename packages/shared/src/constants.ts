@@ -81,3 +81,18 @@ export const STANDARD_MOTOR_POWERS_KW = [
   0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15, 18.5, 22,
   30, 37, 45, 55, 75, 90, 110, 132, 160, 200, 250, 315, 355, 400, 450, 500
 ];
+
+// Lubrication types
+export const LUBRICATION_TYPES = [
+  'grease', 'oil_ring', 'oil_mist', 'oil_bath', 'forced_oil',
+  'product_lubricated', 'self_lubricated', 'external_flush'
+] as const;
+export type LubricationType = typeof LUBRICATION_TYPES[number];
+
+// OH/BB use only the first five; VS types use the last three as well
+export const OH_BB_LUBRICATION_TYPES = ['grease', 'oil_ring', 'oil_mist', 'oil_bath', 'forced_oil'] as const;
+export const VS_LUBRICATION_TYPES = LUBRICATION_TYPES;
+
+// VS bearing groups
+export const VS_BEARING_GROUPS = ['line_shaft', 'thrust', 'bowl'] as const;
+export type VSBearingGroup = typeof VS_BEARING_GROUPS[number];

@@ -132,6 +132,39 @@ export interface CurveSetWithData {
   curves: CurveDataRow[];
 }
 
+export interface ComponentDrawing {
+  id: string;
+  partNumberId: string;
+  drawingNumber: string;
+  drawingUrl: string;
+  title: string | null;
+  displayOrder: number;
+}
+
+export interface ComponentPartNumber {
+  id: string;
+  componentDefId: string;
+  modelId: string | null;
+  partNumber: string;
+  lubricationTypes: string[] | null;
+  certifications: string[] | null;
+  notes: string | null;
+  model: { id: string; modelCode: string } | null;
+  drawings: ComponentDrawing[];
+}
+
+export interface ComponentPropertyDef {
+  id: string;
+  componentDefId: string;
+  propertyKey: string;
+  displayName: string;
+  unit: string | null;
+  dataType: string;
+  selectOptions: string[] | null;
+  displayOrder: number;
+  isRequired: boolean;
+}
+
 export interface ComponentDef {
   id: string;
   hiTypeCode: string;
@@ -142,6 +175,9 @@ export interface ComponentDef {
   isPressureBoundary: boolean;
   isPerStage: boolean;
   isRequired: boolean;
+  notes: string | null;
+  partNumbers: ComponentPartNumber[];
+  propertyDefs: ComponentPropertyDef[];
 }
 
 interface CatalogState {
@@ -176,9 +212,19 @@ interface CatalogState {
   updateMotor: (id: string, data: any) => Promise<void>;
   deleteMotor: (id: string) => Promise<void>;
 
-  // Components (read-only reference)
+  // Components
   componentDefs: ComponentDef[];
   fetchComponentDefs: () => Promise<void>;
+  updateComponentDef: (id: string, data: any) => Promise<void>;
+  addPartNumber: (componentDefId: string, data: any) => Promise<void>;
+  updatePartNumber: (pnId: string, data: any) => Promise<void>;
+  deletePartNumber: (pnId: string) => Promise<void>;
+  addDrawing: (partNumberId: string, data: any) => Promise<void>;
+  updateDrawing: (drawingId: string, data: any) => Promise<void>;
+  deleteDrawing: (drawingId: string) => Promise<void>;
+  addPropertyDef: (componentDefId: string, data: any) => Promise<void>;
+  updatePropertyDef: (propDefId: string, data: any) => Promise<void>;
+  deletePropertyDef: (propDefId: string) => Promise<void>;
 
   // Certifications (read-only reference)
   certifications: any[];
@@ -319,11 +365,61 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
     set({ motors: get().motors.filter(m => m.id !== id) });
   },
 
-  // ---- Components (read-only) ----
+  // ---- Components ----
   componentDefs: [],
   fetchComponentDefs: async () => {
     const defs = await apiGet<ComponentDef[]>('/api/components');
     set({ componentDefs: defs });
+  },
+
+  updateComponentDef: async (id, data) => {
+    const updated = await apiPut<ComponentDef>(`/api/components/${id}`, data);
+    set({ componentDefs: get().componentDefs.map(c => c.id === id ? updated : c) });
+  },
+
+  addPartNumber: async (componentDefId, data) => {
+    await apiPost(`/api/components/${componentDefId}/part-numbers`, data);
+    await get().fetchComponentDefs();
+  },
+
+  updatePartNumber: async (pnId, data) => {
+    await apiPut(`/api/components/part-numbers/${pnId}`, data);
+    await get().fetchComponentDefs();
+  },
+
+  deletePartNumber: async (pnId) => {
+    await apiDelete(`/api/components/part-numbers/${pnId}`);
+    await get().fetchComponentDefs();
+  },
+
+  addDrawing: async (partNumberId, data) => {
+    await apiPost(`/api/components/part-numbers/${partNumberId}/drawings`, data);
+    await get().fetchComponentDefs();
+  },
+
+  updateDrawing: async (drawingId, data) => {
+    await apiPut(`/api/components/drawings/${drawingId}`, data);
+    await get().fetchComponentDefs();
+  },
+
+  deleteDrawing: async (drawingId) => {
+    await apiDelete(`/api/components/drawings/${drawingId}`);
+    await get().fetchComponentDefs();
+  },
+
+  addPropertyDef: async (componentDefId, data) => {
+    await apiPost(`/api/components/${componentDefId}/properties`, data);
+    await get().fetchComponentDefs();
+  },
+
+  updatePropertyDef: async (propDefId, data) => {
+    await apiPut(`/api/components/properties/${propDefId}`, data);
+    await get().fetchComponentDefs();
+  },
+
+  deletePropertyDef: async (propDefId) => {
+    await apiDelete(`/api/components/properties/${propDefId}`);
+    await get().fetchComponentDefs();
   },
 
   // ---- Certifications (read-only) ----

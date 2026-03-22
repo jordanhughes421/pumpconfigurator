@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Key Documents
 
 - **`ROADMAP.md`** — Feature roadmap organized by priority tier (P0-P3) and milestone. This tells you WHAT to build next.
-- **`docs/M0 - Component Catalog, Properties, and Lubrication Spec.md`** — Active build spec for M0: component part numbers/drawings, configurable properties, lubrication system, selection engine bug fix. Read this before starting M0 work.
+- **`docs/M0 - Component Catalog, Properties, and Lubrication Spec.md`** — M0 build spec (complete): component part numbers/drawings, configurable properties, lubrication system, selection engine bug fix.
 - **`Magnum Opus - Comprehensive Pump Design and Configuration Application.md`** — Full engineering reference (~4,400 lines, 9 sections, 4 appendices). This tells you WHY. Consult it for domain context, engineering rationale, certification constraint details, and seed data (Appendix B: 117+ materials, Section 1.5: 380+ component definitions).
 - **`docs/archive/Magnum Opus - Implementation Spec for Claude Code.md`** — Original build spec (Phases 1-6, now complete). Archived for reference.
 
@@ -32,16 +32,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 pumpconfigurator/
 ├── apps/
-│   ├── api/          # Express API + Prisma ORM (Phase 1-6 complete)
+│   ├── api/          # Express API + Prisma ORM (Phase 1-6 + M0 complete)
 │   │   ├── src/
 │   │   │   ├── routes/       # pumps, materials, certifications, components, curves, geometry, projects, configurations, motors, baseplates
 │   │   │   ├── services/     # selectionEngine, curveEngine, materialEngine, certificationEngine, validationEngine, correlationEngine
 │   │   │   └── middleware/   # validateRequest
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma # 20+ tables
-│   │   │   └── seed/         # Fixtures (pumps, materials, certs, curves, motors, baseplates, geometry)
+│   │   │   ├── schema.prisma # 25+ tables
+│   │   │   └── seed/         # Fixtures (pumps, materials, certs, curves, motors, baseplates, geometry, properties, lubrication rules)
 │   │   └── scripts/verify.ts # Smoke tests for all phases (1-6)
-│   ├── web/          # React 18 + Vite + Tailwind + Zustand + D3.js (Phase 5-6 complete)
+│   ├── web/          # React 18 + Vite + Tailwind + Zustand + D3.js (Phase 5-6 + M0 complete)
 │   │   └── src/
 │   │       ├── pages/        # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, ModelGeometry, ImpellerDetail, VoluteDetail, Correlations, Catalog
 │   │       ├── components/   # HQChart, HydraulicTab, MaterialsTab, MotorTab, BaseplateTab, ComplianceTab, CertificationBar
@@ -51,7 +51,7 @@ pumpconfigurator/
 ├── packages/
 │   └── shared/       # Types, constants, curve math (dual ESM + CJS)
 │       └── src/
-│           ├── constants.ts      # HI types, certs, materials, modification codes, etc.
+│           ├── constants.ts      # HI types, certs, materials, modification codes, lubrication types, etc.
 │           ├── types.ts          # 15 interfaces (DutyPoint, CurveSet, etc.)
 │           ├── curveEngine.ts    # Polynomial (Horner), cubic spline, linear interp
 │           ├── affinityLaws.ts   # Speed/trim scaling with Pfleiderer correction
@@ -68,6 +68,7 @@ pumpconfigurator/
 4. **Material Selection & Certification Engine** ✅ — 5-step material filtering pipeline, 14 certification rules (NSF61/372/BABA/FM/API610/ATEX/etc.), validation engine (completeness, lead average, BABA, galvanic), 83 component-material options, 32 cert mappings
 5. **Configuration UI** ✅ — React 18 + Vite + Tailwind + Zustand + D3.js, project/config CRUD, tabbed configurator (Hydraulic, Materials, Motor, Baseplate, Compliance), interactive H-Q chart with client-side curve scaling, motor/baseplate seed data, CORS
 6. **Geometry/Curve Customization Module** ✅ — Impeller/volute geometry CRUD, modification tracking with before/after diffs, test results with before/after data points (up to 20 pts) and D3 overlay charts, correlation analysis with linear regression, D3 scatter chart, geometry dashboard and detail pages with full CRUD (edit/delete), catalog browsing page, expanded API DELETE endpoints with cascade deletes
+7. **M0: Component Catalog, Properties & Lubrication** ✅ — Part numbers with model applicability, lubrication compatibility, and certification compliance tags; linked drawings; dynamic configurable properties per component (admin-defined, collapsible in Materials Tab); pump-level lubrication system (global for OH/BB, per-bearing-group for VS) with component BOM filtering, material option filtering, and certification-constraint rules (API610, FM); selection engine head tolerance bug fix
 
 ## Critical Domain Rules
 

@@ -57,6 +57,9 @@ router.get('/options', async (req, res, next) => {
       certs = certStrings as CertificationCode[];
     }
 
+    // Parse optional lubrication type
+    const lubricationType = req.query.lubricationType as string | undefined;
+
     // Expand mutual requirements (e.g., NSF372 → also NSF61)
     const expandedCerts = await getMutualRequirements(certs);
 
@@ -72,6 +75,7 @@ router.get('/options', async (req, res, next) => {
     const { materials, totalBefore, componentDef } = await getFilteredMaterials(componentDefId, {
       temperature_c: tempC,
       certifications: expandedCerts,
+      lubrication_type: lubricationType,
     });
 
     res.json({

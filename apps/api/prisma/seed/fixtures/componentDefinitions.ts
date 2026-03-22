@@ -24,6 +24,11 @@ export const sampleComponentDefinitions: Prisma.ComponentDefinitionCreateInput[]
   { hiTypeCode: 'OH1', componentKey: 'coupling',            displayName: 'Coupling',                  displayOrder: 18, isWetted: false, isPressureBoundary: false, isPerStage: false, isRequired: true },
   { hiTypeCode: 'OH1', componentKey: 'coupling_guard',      displayName: 'Coupling Guard',            displayOrder: 19, isWetted: false, isPressureBoundary: false, isPerStage: false, isRequired: true },
 
+  // --- OH1: Lubrication-dependent components ---
+  { hiTypeCode: 'OH1', componentKey: 'oil_flinger',         displayName: 'Oil Flinger',               displayOrder: 20, isWetted: false, isPressureBoundary: false, isPerStage: false, isRequired: false, lubricationTypes: ['oil_ring', 'oil_bath'], lubricationAdded: true },
+  { hiTypeCode: 'OH1', componentKey: 'oil_ring',            displayName: 'Oil Ring',                  displayOrder: 21, isWetted: false, isPressureBoundary: false, isPerStage: false, isRequired: false, lubricationTypes: ['oil_ring'], lubricationAdded: true },
+  { hiTypeCode: 'OH1', componentKey: 'constant_level_oiler', displayName: 'Constant Level Oiler',     displayOrder: 22, isWetted: false, isPressureBoundary: false, isPerStage: false, isRequired: false, lubricationTypes: ['oil_bath'], lubricationAdded: true },
+
   // --- BB1 (partial sample — 6 key components) ---
   { hiTypeCode: 'BB1', componentKey: 'upper_casing',        displayName: 'Upper Casing Half',         displayOrder: 1,  isWetted: true,  isPressureBoundary: true,  isPerStage: false, isRequired: true },
   { hiTypeCode: 'BB1', componentKey: 'lower_casing',        displayName: 'Lower Casing Half',         displayOrder: 2,  isWetted: true,  isPressureBoundary: true,  isPerStage: false, isRequired: true },

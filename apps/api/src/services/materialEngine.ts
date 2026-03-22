@@ -42,6 +42,7 @@ export interface MaterialContext {
   temperature_c?: number;
   certifications: CertificationCode[];
   adjacent_materials?: Map<string, string>; // material_group by component_key
+  lubrication_type?: string;
 }
 
 // Simplified galvanic compatibility groups (ordered by nobility)
@@ -102,6 +103,21 @@ export async function getFilteredMaterials(
   }));
 
   const totalBefore = materials.length;
+
+  // Step 1.5 — Filter by lubrication type (if active)
+  if (context.lubrication_type) {
+    const lubeType = context.lubrication_type;
+    // Build a set of material IDs that are compatible with this lube type
+    const compatibleIds = new Set<string>();
+    for (const opt of options) {
+      const optLubeTypes = opt.lubricationTypes as string[] | null;
+      // null means "compatible with all lube types"
+      if (optLubeTypes === null || optLubeTypes.includes(lubeType)) {
+        compatibleIds.add(opt.material.id);
+      }
+    }
+    materials = materials.filter(m => compatibleIds.has(m.id));
+  }
 
   // Step 2 — Filter by temperature
   if (context.temperature_c !== undefined) {

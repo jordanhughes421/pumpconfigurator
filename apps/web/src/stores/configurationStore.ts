@@ -28,6 +28,12 @@ export interface ConfigurationData {
   sealFaceMaterial: string | null;
   sealElastomer: string | null;
   couplingType: string | null;
+  lubricationType: string | null;
+  bearingLubrication: Array<{
+    id: string;
+    bearingGroup: string;
+    lubricationType: string;
+  }>;
   validationStatus: string;
   validationMessages: any[];
   pumpSize: {
@@ -47,7 +53,17 @@ export interface ConfigurationData {
     id: string;
     componentKey: string;
     materialId: string;
+    partNumberId: string | null;
     material: { materialCode: string; commonName: string };
+    partNumber: { id: string; partNumber: string } | null;
+  }>;
+  propertyValues: Array<{
+    id: string;
+    propertyDefId: string;
+    componentKey: string;
+    valueNumber: number | null;
+    valueText: string | null;
+    propertyDef: { propertyKey: string; displayName: string; unit: string | null; dataType: string };
   }>;
   motor: any | null;
   baseplate: any | null;

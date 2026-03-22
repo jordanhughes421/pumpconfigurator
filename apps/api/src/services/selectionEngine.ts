@@ -20,8 +20,8 @@ export async function findCandidates(
   // Using $queryRaw because the compound join + range filter on both flow AND head
   // with multipliers is cleaner in SQL than chained Prisma where clauses across 3 relations.
   const dutyFlow = new Prisma.Decimal(duty.flow_m3h);
-  const dutyHeadLow = new Prisma.Decimal(duty.head_m * 0.7);
-  const dutyHeadHigh = new Prisma.Decimal(duty.head_m * 1.3);
+  const dutyHeadMin = new Prisma.Decimal(duty.head_m);
+  const dutyHeadMax = new Prisma.Decimal(duty.head_m * 1.3);
 
   interface RawCandidate {
     size_id: string;
@@ -65,8 +65,8 @@ export async function findCandidates(
     JOIN pump_family pf ON pm.family_id = pf.id
     WHERE ps.min_flow_m3h <= ${dutyFlow}
       AND ps.max_flow_m3h >= ${dutyFlow}
-      AND ps.rated_head_m * 0.7 <= ${new Prisma.Decimal(duty.head_m)}
-      AND ps.rated_head_m * 1.3 >= ${new Prisma.Decimal(duty.head_m)}
+      AND ps.rated_head_m >= ${dutyHeadMin}
+      AND ps.rated_head_m <= ${dutyHeadMax}
   `;
 
   // Step 2 — Filter by constraints
@@ -108,6 +108,11 @@ export async function findCandidates(
     else score -= 30;
 
     score += ratedEfficiency * 0.5;
+
+    // Head proximity bonus — prefer pumps requiring minimal trim
+    const headRatio = ratedHead / duty.head_m;
+    if (headRatio >= 1.0 && headRatio <= 1.1) score += 10;
+    else if (headRatio > 1.1 && headRatio <= 1.2) score += 5;
 
     if (duty.npsha_m - ratedNpshr < 1.0) score -= 20;
 

@@ -7,17 +7,19 @@
 
 ## Current State
 
-Phases 1-6 of the initial build are complete. The application has a working end-to-end flow: duty point input, pump selection with scoring, interactive performance curves (D3.js + shared curve math), per-component material filtering with certification constraints, motor/baseplate selection, four-tier validation, geometry/modification tracking with correlation analysis, and a catalog browser.
+Phases 1-6 and Milestone 0 are complete. The application has a working end-to-end flow: duty point input, pump selection with scoring, interactive performance curves (D3.js + shared curve math), per-component material filtering with certification and lubrication constraints, motor/baseplate selection, four-tier validation, geometry/modification tracking with correlation analysis, catalog browser with part number/property/drawing management, and lubrication system with certification-constraint rules.
 
 **What exists today:**
-- 61 API endpoints (Express + Prisma)
-- 20+ database tables (PostgreSQL 16)
+- 70+ API endpoints (Express + Prisma)
+- 25+ database tables (PostgreSQL 16)
 - 8 frontend pages, 7 shared components (React 18 + Vite + Tailwind + Zustand)
 - D3.js charting (H-Q curves, scatter plots, before/after overlays)
 - Shared curve math library (polynomial, spline, affinity laws, Brent's solver)
 - 3 pump families seeded (OH1, BB1, VS1) with 5 models, 12 sizes
-- 8 materials, 14 certifications, 83 component-material options, 32 cert mappings
+- 10 materials, 14 certifications, 85 component-material options, 42 cert mappings
 - Geometry module with impeller/volute CRUD, modifications, test results, correlations
+- Component catalog with part numbers (model/lube/cert tagged), drawings, 23 property definitions
+- Lubrication system with BOM filtering, material filtering, 2 certification-constraint rules
 
 ---
 
@@ -32,8 +34,9 @@ Phases 1-6 of the initial build are complete. The application has a working end-
 
 ---
 
-## Milestone 0: Component Catalog, Configurable Properties & Lubrication
+## Milestone 0: Component Catalog, Configurable Properties & Lubrication ✅
 
+**Status:** Complete (2026-03-22)
 **Goal:** Transform the component catalog from a flat material-selection list into a fully configurable parts system with part numbers, drawings, dynamic properties, and lubrication-dependent component availability. Fix critical selection engine bug.
 
 **Spec:** [`docs/M0 - Component Catalog, Properties, and Lubrication Spec.md`](docs/M0%20-%20Component%20Catalog,%20Properties,%20and%20Lubrication%20Spec.md)

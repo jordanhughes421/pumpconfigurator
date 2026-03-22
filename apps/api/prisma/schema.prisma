@@ -52,6 +52,7 @@ model PumpModel {
   baseplates PumpModelBaseplate[]
   impellerGeometries ImpellerGeometry[]
   voluteGeometries   VoluteGeometry[]
+  componentPartNumbers ComponentPartNumber[]
 
   @@unique([familyId, modelCode])
   @@map("pump_model")
@@ -141,13 +142,99 @@ model ComponentDefinition {
   isPressureBoundary Boolean @default(false) @map("is_pressure_boundary")
   isPerStage         Boolean @default(false) @map("is_per_stage")
   isRequired         Boolean @default(true) @map("is_required")
+  lubricationTypes   Json?   @map("lubrication_types")
+  lubricationAdded   Boolean @default(false) @map("lubrication_added")
   notes              String? @db.Text
 
   materialOptions ComponentMaterialOption[]
+  partNumbers     ComponentPartNumber[]
+  propertyDefs    ComponentPropertyDef[]
 
   @@unique([hiTypeCode, componentKey])
   @@index([hiTypeCode, displayOrder], map: "idx_component_def_type")
   @@map("component_definition")
+}
+
+model ComponentPartNumber {
+  id               String   @id @default(uuid())
+  componentDefId   String   @map("component_def_id")
+  modelId          String?  @map("model_id")
+  partNumber       String   @map("part_number") @db.VarChar(100)
+  lubricationTypes Json?    @map("lubrication_types")
+  certifications   Json?    @map("certifications")
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  componentDef        ComponentDefinition @relation(fields: [componentDefId], references: [id], onDelete: Cascade)
+  model               PumpModel?          @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  drawings            ComponentDrawing[]
+  materialSelections  ComponentMaterialSelectionRecord[]
+
+  @@unique([componentDefId, partNumber])
+  @@index([modelId], map: "idx_part_number_model")
+  @@map("component_part_number")
+}
+
+model ComponentDrawing {
+  id              String   @id @default(uuid())
+  partNumberId    String   @map("part_number_id")
+  drawingNumber   String   @map("drawing_number") @db.VarChar(100)
+  drawingUrl      String   @map("drawing_url") @db.VarChar(1000)
+  title           String?  @db.VarChar(200)
+  displayOrder    Int      @default(0) @map("display_order")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  partNumberEntry ComponentPartNumber @relation(fields: [partNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([partNumberId, drawingNumber])
+  @@map("component_drawing")
+}
+
+model ComponentPropertyDef {
+  id              String   @id @default(uuid())
+  componentDefId  String   @map("component_def_id")
+  propertyKey     String   @map("property_key") @db.VarChar(50)
+  displayName     String   @map("display_name") @db.VarChar(100)
+  unit            String?  @db.VarChar(20)
+  dataType        String   @default("number") @map("data_type") @db.VarChar(20)
+  selectOptions   Json?    @map("select_options")
+  displayOrder    Int      @default(0) @map("display_order")
+  isRequired      Boolean  @default(false) @map("is_required")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  componentDef ComponentDefinition      @relation(fields: [componentDefId], references: [id], onDelete: Cascade)
+  values       ComponentPropertyValue[]
+
+  @@unique([componentDefId, propertyKey])
+  @@map("component_property_def")
+}
+
+model ComponentPropertyValue {
+  id              String   @id @default(uuid())
+  configurationId String   @map("configuration_id")
+  propertyDefId   String   @map("property_def_id")
+  componentKey    String   @map("component_key") @db.VarChar(50)
+  valueNumber     Decimal? @map("value_number") @db.Decimal(12, 4)
+  valueText       String?  @map("value_text") @db.VarChar(200)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  configuration PumpConfigurationRecord @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  propertyDef   ComponentPropertyDef    @relation(fields: [propertyDefId], references: [id], onDelete: Cascade)
+
+  @@unique([configurationId, propertyDefId, componentKey])
+  @@map("component_property_value")
+}
+
+model ConfigurationBearingLubrication {
+  id              String @id @default(uuid())
+  configurationId String @map("configuration_id")
+  bearingGroup    String @map("bearing_group") @db.VarChar(30)
+  lubricationType String @map("lubrication_type") @db.VarChar(30)
+
+  configuration PumpConfigurationRecord @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+
+  @@unique([configurationId, bearingGroup])
+  @@map("configuration_bearing_lubrication")
 }
 
 model Material {
@@ -186,9 +273,10 @@ model ComponentMaterialOption {
   materialId     String  @map("material_id")
   modelId        String? @map("model_id")
   isDefault      Boolean @default(false) @map("is_default")
-  isStandard     Boolean @default(true) @map("is_standard")
-  costTier       Int     @default(1) @map("cost_tier")
-  notes          String? @db.Text
+  isStandard       Boolean @default(true) @map("is_standard")
+  costTier         Int     @default(1) @map("cost_tier")
+  lubricationTypes Json?   @map("lubrication_types")
+  notes            String? @db.Text
 
   componentDef ComponentDefinition @relation(fields: [componentDefId], references: [id])
   material     Material            @relation(fields: [materialId], references: [id])
@@ -385,6 +473,7 @@ model PumpConfigurationRecord {
   couplingType       String?  @map("coupling_type") @db.VarChar(30)
   sealFaceMaterial   String?  @map("seal_face_material") @db.VarChar(30)
   sealElastomer      String?  @map("seal_elastomer") @db.VarChar(20)
+  lubricationType    String?  @map("lubrication_type") @db.VarChar(30)
   // Baseplate customization
   baseplateFrameType String?  @map("baseplate_frame_type") @db.VarChar(30)
   baseplateMaterial  String?  @map("baseplate_material") @db.VarChar(50)
@@ -407,7 +496,9 @@ model PumpConfigurationRecord {
   pumpSize           PumpSize        @relation(fields: [pumpSizeId], references: [id])
   motor              MotorOption?    @relation("ConfigurationMotor", fields: [motorOptionId], references: [id])
   baseplate          BaseplateOption? @relation("ConfigurationBaseplate", fields: [baseplateId], references: [id])
-  materialSelections ComponentMaterialSelectionRecord[]
+  materialSelections  ComponentMaterialSelectionRecord[]
+  propertyValues      ComponentPropertyValue[]
+  bearingLubrication  ConfigurationBearingLubrication[]
 
   @@map("pump_configuration")
 }
@@ -417,6 +508,7 @@ model ComponentMaterialSelectionRecord {
   configurationId    String  @map("configuration_id")
   componentKey       String  @map("component_key") @db.VarChar(50)
   materialId         String  @map("material_id")
+  partNumberId       String? @map("part_number_id")
   coatingRequired    Boolean @default(false) @map("coating_required")
   coatingSpec        String? @map("coating_spec") @db.VarChar(100)
   cmtrRequired       Boolean @default(false) @map("cmtr_required")
@@ -429,6 +521,7 @@ model ComponentMaterialSelectionRecord {
 
   configuration PumpConfigurationRecord @relation(fields: [configurationId], references: [id])
   material      Material                @relation(fields: [materialId], references: [id])
+  partNumber    ComponentPartNumber?    @relation(fields: [partNumberId], references: [id], onDelete: SetNull)
 
   @@unique([configurationId, componentKey])
   @@map("component_material_selection")

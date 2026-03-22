@@ -105,12 +105,24 @@ The API runs at `http://localhost:3001`. The frontend runs at `http://localhost:
 | `/api/geometry/test-results/:id` | PUT/DELETE | Update/delete a test result |
 | `/api/geometry/correlations` | GET | Linear regression: `?feature=trimRatio&target=etaBepPct&modelId=` |
 
+### Component Catalog & Lubrication (M0)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/components/:hiTypeCode` | GET | Components with part numbers (incl. lube/cert tags), drawings, property defs |
+| `/api/components/:id/part-numbers` | POST | Add a part number with model, lubrication types, certifications |
+| `/api/components/part-numbers/:pnId` | PUT/DELETE | Update/delete a part number |
+| `/api/components/:id/properties` | POST | Add a property definition to a component |
+| `/api/components/properties/:propDefId` | PUT/DELETE | Update/delete a property definition |
+| `/api/configurations/:id/properties` | PUT | Set property values for a configuration |
+| `/api/configurations/:id/bearing-lubrication` | PUT | Set per-bearing-group lubrication (VS types) |
+| `/api/configurations/lubrication-rules` | GET | Lubrication rules filtered by `?certs=API610,FM` — returns allowed types |
+
 ### Reference Data (Phase 1)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check |
-| `/api/components/:hiTypeCode` | GET | Component definitions for an HI type (e.g. `OH1`) |
 | `/api/materials` | GET | All materials (filter with `?group=ss_austenitic`) |
 | `/api/certifications` | GET | All certifications |
 
@@ -167,7 +179,7 @@ pumpconfigurator/
 │   │   │   ├── services/       # selectionEngine, curveEngine, materialEngine, certificationEngine, validationEngine, correlationEngine
 │   │   │   └── middleware/     # Request validation
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma   # 20+ tables (pumps, materials, certs, geometry)
+│   │   │   ├── schema.prisma   # 25+ tables (pumps, materials, certs, geometry, properties, lubrication)
 │   │   │   ├── migrations/
 │   │   │   └── seed/           # Seed fixtures + importer stubs
 │   │   └── scripts/
@@ -194,11 +206,11 @@ The database ships with sample data clearly labeled with `[SAMPLE]` prefixes:
 | `pump_family` | 3 | OH1, BB1, VS1 |
 | `pump_model` | 5 | Across the 3 families |
 | `pump_size` | 12 | Various flow/head ranges for search testing |
-| `component_definition` | 25 | OH1 (19) + BB1 (6 partial) |
-| `material` | 8 | Cast iron, ductile iron, 304/316 SS, carbon steel, bronzes, duplex SS |
+| `component_definition` | 28 | OH1 (22 incl. lubrication-dependent) + BB1 (6 partial) |
+| `material` | 10 | Cast iron, ductile iron, 304/316 SS, carbon steel, bronzes, duplex SS, etc. |
 | `certification` | 14 | All 14 from spec (NSF61, NSF372, BABA, FM, API610, etc.) |
-| `material_certification` | 32 | 8 materials × NSF61/NSF372/API610/WRAS/CE_PED certifications |
-| `component_material_option` | 83 | Per-component material assignments with defaults and cost tiers |
+| `material_certification` | 42 | Materials × NSF61/NSF372/API610/WRAS/CE_PED certifications |
+| `component_material_option` | 85 | Per-component material assignments with defaults and cost tiers |
 | `performance_curve_set` | 12 | One reference curve set per pump size |
 | `curve_data` | 48 | 4 curves (HQ, EQ, PQ, NPSHR) per curve set |
 | `motor_option` | 10 | Standard motor ratings (0.75–200 kW) |
@@ -207,6 +219,8 @@ The database ships with sample data clearly labeled with `[SAMPLE]` prefixes:
 | `volute_geometry` | 2 | OH1 single volute + BB1 double volute |
 | `geometry_modification` | 4 | Trim, vane backfile, cutwater file, eye boreout |
 | `geometry_test_result` | 6 | Factory/field test results with BEP performance and before/after data points |
+| `component_property_def` | 23 | Core dimensional properties for OH1, BB1, VS1 components |
+| `configuration_rule` | 2 | Certification-lubrication constraint rules (API610, FM) |
 
 Full data import stubs exist at `apps/api/prisma/seed/importers/` for the complete 380+ components, 117+ materials, and certification mappings from the Magnum Opus spec.
 
@@ -218,12 +232,12 @@ The React frontend provides a full configuration workflow:
 - **Pump Selection** — Enter duty point (flow, head, NPSH, fluid), view ranked candidates sorted by score
 - **Configurator** — Tabbed interface for each configuration:
   - **Hydraulic** — Interactive H-Q curve chart (D3.js) with trim/speed sliders, system curve overlay, operating point solver. Curve math runs client-side via `@magnum-opus/shared` for <16ms response
-  - **Materials** — Per-component material dropdowns filtered by active certifications
+  - **Materials** — Per-component material dropdowns filtered by active certifications and lubrication type, part number selection with certification badges, collapsible property inputs, lubrication type selector (global for OH/BB, per-bearing-group for VS) with cert-restriction warnings
   - **Motor** — Motor selection table filtered by power requirements and certifications
   - **Baseplate** — Baseplate type selection cards
   - **Compliance** — Four-tier validation (hard_block/cert_block/warning/advisory) with configuration summary
 - **Geometry** — Impeller/volute geometry dashboard with full CRUD (create/edit/delete), modification history with before/after geometry diffs, test results with up to 20 before/after data points (H, Q, P, η, NPSHr), D3 before/after overlay charts with interactive crosshair, correlation scatter chart with linear regression
-- **Catalog** — Browse pump families, models, sizes, curves, and component definitions
+- **Catalog** — Browse pump families, models, sizes, curves, and component definitions with part number management (add/edit/delete, lubrication compatibility, certification compliance), property definitions, and drawing links
 
 ## Phase Status
 
@@ -234,3 +248,4 @@ The React frontend provides a full configuration workflow:
 - **Phase 5** ✓ Configuration UI — React 18 + Vite + Tailwind + Zustand + D3.js, tabbed configurator, client-side curve scaling, CORS integration
 - **Phase 6** ✓ Geometry/curve customization module — impeller/volute geometry CRUD, modification tracking with before/after diffs, test results with before/after data points and D3 overlay charts, correlation analysis with linear regression
 - **Phase 6+** ✓ Full geometry CRUD UI — edit/delete on all geometry pages, before/after test data points (up to 20 pts), catalog browsing, expanded API routes with DELETE endpoints and cascade deletes
+- **M0** ✓ Component catalog, properties & lubrication — part numbers with model/lube/cert tags, linked drawings, dynamic configurable properties (collapsible), lubrication system (global OH/BB, per-bearing-group VS) with BOM filtering and cert-constraint rules, selection engine head tolerance fix

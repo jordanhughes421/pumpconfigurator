@@ -47,6 +47,43 @@ router.post('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/configurations/lubrication-rules — Get lubrication constraint rules for given certifications
+router.get('/lubrication-rules', async (req, res, next) => {
+  try {
+    const certs = req.query.certs
+      ? (req.query.certs as string).split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+
+    const rules = await prisma.configurationRule.findMany({
+      where: { ruleType: 'lubrication_constraint' },
+    });
+
+    // Filter to rules matching the active certifications
+    const applicable = rules.filter(rule => {
+      const condition = rule.condition as { certification?: string };
+      return !condition.certification || certs.includes(condition.certification);
+    });
+
+    // Compute intersection of all restrict_to sets
+    let allowedTypes: string[] | null = null;
+    for (const rule of applicable) {
+      const action = rule.action as { restrict_to?: string[] };
+      if (action.restrict_to) {
+        if (allowedTypes === null) {
+          allowedTypes = [...action.restrict_to];
+        } else {
+          allowedTypes = allowedTypes.filter(t => action.restrict_to!.includes(t));
+        }
+      }
+    }
+
+    res.json({
+      rules: applicable,
+      allowed_types: allowedTypes, // null means no restrictions
+    });
+  } catch (err) { next(err); }
+});
+
 // GET /api/configurations/:id — Full configuration detail
 router.get('/:id', async (req, res, next) => {
   try {
@@ -60,7 +97,9 @@ router.get('/:id', async (req, res, next) => {
         pumpSize: {
           include: { model: { include: { family: true } } },
         },
-        materialSelections: { include: { material: true } },
+        materialSelections: { include: { material: true, partNumber: { select: { id: true, partNumber: true } } } },
+        propertyValues: { include: { propertyDef: true } },
+        bearingLubrication: true,
         motor: true,
         baseplate: true,
         project: true,
@@ -87,6 +126,7 @@ router.put('/:id', async (req, res, next) => {
       motor_option_id, baseplate_id, seal_type, seal_plan, coupling_type, seal_face_material, seal_elastomer,
       baseplate_frame_type, baseplate_material, baseplate_has_drip_rim,
       baseplate_has_drain, baseplate_grout_type, baseplate_domestic,
+      lubrication_type,
       material_selections,
     } = req.body;
 
@@ -109,13 +149,15 @@ router.put('/:id', async (req, res, next) => {
     if (baseplate_has_drain !== undefined) data.baseplateHasDrain = baseplate_has_drain;
     if (baseplate_grout_type !== undefined) data.baseplateGroutType = baseplate_grout_type;
     if (baseplate_domestic !== undefined) data.baseplateDomestic = baseplate_domestic;
+    if (lubrication_type !== undefined) data.lubricationType = lubrication_type;
 
     const config = await prisma.pumpConfigurationRecord.update({
       where: { id: req.params.id },
       data,
       include: {
         pumpSize: { include: { model: { include: { family: true } } } },
-        materialSelections: { include: { material: true } },
+        materialSelections: { include: { material: true, partNumber: { select: { id: true, partNumber: true } } } },
+        bearingLubrication: true,
         motor: true,
         baseplate: true,
       },
@@ -133,6 +175,7 @@ router.put('/:id', async (req, res, next) => {
           },
           update: {
             materialId: sel.material_id,
+            partNumberId: sel.part_number_id !== undefined ? (sel.part_number_id || null) : undefined,
             coatingRequired: sel.coating_required ?? false,
             coatingSpec: sel.coating_spec ?? null,
           },
@@ -140,6 +183,7 @@ router.put('/:id', async (req, res, next) => {
             configurationId: config.id,
             componentKey: sel.component_key,
             materialId: sel.material_id,
+            partNumberId: sel.part_number_id || null,
             coatingRequired: sel.coating_required ?? false,
             coatingSpec: sel.coating_spec ?? null,
           },
@@ -151,7 +195,8 @@ router.put('/:id', async (req, res, next) => {
         where: { id: req.params.id },
         include: {
           pumpSize: { include: { model: { include: { family: true } } } },
-          materialSelections: { include: { material: true } },
+          materialSelections: { include: { material: true, partNumber: { select: { id: true, partNumber: true } } } },
+          bearingLubrication: true,
           motor: true,
           baseplate: true,
         },
@@ -237,6 +282,93 @@ router.delete('/:id', async (req, res, next) => {
       where: { id: req.params.id },
     });
     res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+// PUT /api/configurations/:id/properties — Set property values for a configuration
+router.put('/:id/properties', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) {
+      res.status(400).json({ error: 'Invalid configuration ID' });
+      return;
+    }
+
+    const { values } = req.body;
+    if (!Array.isArray(values)) {
+      res.status(400).json({ error: 'values array is required' });
+      return;
+    }
+
+    for (const val of values) {
+      if (!val.propertyDefId || !val.componentKey) continue;
+
+      await prisma.componentPropertyValue.upsert({
+        where: {
+          configurationId_propertyDefId_componentKey: {
+            configurationId: req.params.id,
+            propertyDefId: val.propertyDefId,
+            componentKey: val.componentKey,
+          },
+        },
+        update: {
+          valueNumber: val.valueNumber !== undefined ? val.valueNumber : null,
+          valueText: val.valueText !== undefined ? val.valueText : null,
+        },
+        create: {
+          configurationId: req.params.id,
+          propertyDefId: val.propertyDefId,
+          componentKey: val.componentKey,
+          valueNumber: val.valueNumber ?? null,
+          valueText: val.valueText ?? null,
+        },
+      });
+    }
+
+    const updated = await prisma.componentPropertyValue.findMany({
+      where: { configurationId: req.params.id },
+      include: { propertyDef: true },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/configurations/:id/bearing-lubrication — Set per-bearing-group lubrication (VS types)
+router.put('/:id/bearing-lubrication', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) {
+      res.status(400).json({ error: 'Invalid configuration ID' });
+      return;
+    }
+
+    const { groups } = req.body;
+    if (!Array.isArray(groups)) {
+      res.status(400).json({ error: 'groups array is required' });
+      return;
+    }
+
+    for (const g of groups) {
+      if (!g.bearing_group || !g.lubrication_type) continue;
+
+      await prisma.configurationBearingLubrication.upsert({
+        where: {
+          configurationId_bearingGroup: {
+            configurationId: req.params.id,
+            bearingGroup: g.bearing_group,
+          },
+        },
+        update: { lubricationType: g.lubrication_type },
+        create: {
+          configurationId: req.params.id,
+          bearingGroup: g.bearing_group,
+          lubricationType: g.lubrication_type,
+        },
+      });
+    }
+
+    const updated = await prisma.configurationBearingLubrication.findMany({
+      where: { configurationId: req.params.id },
+    });
+    res.json(updated);
   } catch (err) { next(err); }
 });
 

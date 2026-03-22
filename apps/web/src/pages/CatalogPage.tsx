@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useCatalogStore } from '../stores/catalogStore';
-import type { PumpFamily, PumpModel, PumpSize, CatalogMaterial, CatalogMotor, ComponentDef, CurveDataRow } from '../stores/catalogStore';
-import { CERTIFICATION_CODES, evaluatePolynomial } from '@magnum-opus/shared';
+import type { PumpFamily, PumpModel, PumpSize, CatalogMaterial, CatalogMotor, ComponentDef, ComponentDrawing, ComponentPropertyDef, CurveDataRow } from '../stores/catalogStore';
+import { CERTIFICATION_CODES, OH_BB_LUBRICATION_TYPES, evaluatePolynomial } from '@magnum-opus/shared';
 
-const SUB_TABS = ['Pumps', 'Materials', 'Motors'] as const;
+const SUB_TABS = ['Pumps', 'Materials', 'Motors', 'Components'] as const;
 type SubTab = typeof SUB_TABS[number];
 
 export function CatalogPage() {
@@ -31,6 +31,7 @@ export function CatalogPage() {
       {activeTab === 'Pumps' && <PumpsPanel />}
       {activeTab === 'Materials' && <MaterialsPanel />}
       {activeTab === 'Motors' && <MotorsPanel />}
+      {activeTab === 'Components' && <ComponentsPanel />}
     </div>
   );
 }
@@ -1525,6 +1526,550 @@ function MotorForm({ initial, onSave, onCancel }: { initial?: CatalogMotor; onSa
 
 // ============================================================================
 // SHARED FORM PRIMITIVES
+// ============================================================================
+// COMPONENTS PANEL
+// ============================================================================
+
+function ComponentsPanel() {
+  const { componentDefs, fetchComponentDefs, families, fetchFamilies, updateComponentDef, addPartNumber, updatePartNumber, deletePartNumber, addDrawing, updateDrawing, deleteDrawing, addPropertyDef, updatePropertyDef, deletePropertyDef } = useCatalogStore();
+  const [expandedComp, setExpandedComp] = useState<string | null>(null);
+
+  useEffect(() => { fetchComponentDefs(); fetchFamilies(); }, [fetchComponentDefs, fetchFamilies]);
+
+  // Build model lookup from families, keyed by HI type
+  const modelsByHiType = useMemo(() => {
+    const map: Record<string, { id: string; modelCode: string }[]> = {};
+    for (const f of families) {
+      if (!map[f.hiTypeCode]) map[f.hiTypeCode] = [];
+      for (const m of (f.models || [])) {
+        map[f.hiTypeCode].push({ id: m.id, modelCode: m.modelCode });
+      }
+    }
+    return map;
+  }, [families]);
+
+  // Group components by HI type
+  const grouped = useMemo(() => {
+    const map: Record<string, ComponentDef[]> = {};
+    for (const c of componentDefs) {
+      if (!map[c.hiTypeCode]) map[c.hiTypeCode] = [];
+      map[c.hiTypeCode].push(c);
+    }
+    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [componentDefs]);
+
+  const totalDrawings = componentDefs.reduce((sum, c) => sum + c.partNumbers.reduce((s, pn) => s + pn.drawings.length, 0), 0);
+
+  return (
+    <div>
+      <p className="text-sm text-zinc-400 mb-4">
+        {componentDefs.length} components across {grouped.length} HI types
+        {totalDrawings > 0 && ` \u00B7 ${totalDrawings} drawings`}
+      </p>
+      <div className="space-y-4">
+        {grouped.map(([hiType, comps]) => (
+          <div key={hiType} className="border border-zinc-800 rounded-lg bg-zinc-900">
+            <div className="px-4 py-3 border-b border-zinc-800">
+              <span className="font-medium text-zinc-100">{hiType}</span>
+              <span className="text-xs text-zinc-500 ml-2">{comps.length} components</span>
+            </div>
+            <div className="divide-y divide-zinc-800">
+              {comps.map(comp => {
+                const pnCount = comp.partNumbers.length;
+                const dwgCount = comp.partNumbers.reduce((s, pn) => s + pn.drawings.length, 0);
+                return (
+                  <div key={comp.id}>
+                    <button
+                      onClick={() => setExpandedComp(expandedComp === comp.id ? null : comp.id)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-800/50"
+                    >
+                      <span className="text-sm text-zinc-100 w-48">{comp.displayName}</span>
+                      <span className="text-xs text-zinc-500 w-36">{comp.componentKey}</span>
+                      <span className="text-xs text-zinc-600 ml-auto">
+                        {pnCount > 0 && `${pnCount} P/N`}
+                        {pnCount > 0 && dwgCount > 0 && ' \u00B7 '}
+                        {dwgCount > 0 && `${dwgCount} dwg`}
+                      </span>
+                      <span className="text-zinc-600 text-xs">{expandedComp === comp.id ? '\u25B2' : '\u25BC'}</span>
+                    </button>
+
+                    {expandedComp === comp.id && (
+                      <ComponentDetailPanel
+                        comp={comp}
+                        allModels={modelsByHiType[hiType] || []}
+                        onUpdateComp={updateComponentDef}
+                        onAddPartNumber={addPartNumber}
+                        onUpdatePartNumber={updatePartNumber}
+                        onDeletePartNumber={deletePartNumber}
+                        onAddDrawing={addDrawing}
+                        onUpdateDrawing={updateDrawing}
+                        onDeleteDrawing={deleteDrawing}
+                        onAddPropertyDef={addPropertyDef}
+                        onUpdatePropertyDef={updatePropertyDef}
+                        onDeletePropertyDef={deletePropertyDef}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ComponentDetailPanel({ comp, allModels, onUpdateComp, onAddPartNumber, onUpdatePartNumber, onDeletePartNumber, onAddDrawing, onUpdateDrawing, onDeleteDrawing, onAddPropertyDef, onUpdatePropertyDef, onDeletePropertyDef }: {
+  comp: ComponentDef;
+  allModels: { id: string; modelCode: string }[];
+  onUpdateComp: (id: string, data: any) => Promise<void>;
+  onAddPartNumber: (compId: string, data: any) => Promise<void>;
+  onUpdatePartNumber: (pnId: string, data: any) => Promise<void>;
+  onDeletePartNumber: (pnId: string) => Promise<void>;
+  onAddDrawing: (pnId: string, data: any) => Promise<void>;
+  onUpdateDrawing: (drawingId: string, data: any) => Promise<void>;
+  onDeleteDrawing: (drawingId: string) => Promise<void>;
+  onAddPropertyDef: (compId: string, data: any) => Promise<void>;
+  onUpdatePropertyDef: (propDefId: string, data: any) => Promise<void>;
+  onDeletePropertyDef: (propDefId: string) => Promise<void>;
+}) {
+  const [showAddPN, setShowAddPN] = useState(false);
+  const [editingPN, setEditingPN] = useState<string | null>(null);
+  const [expandedPN, setExpandedPN] = useState<string | null>(null);
+  const [showAddProp, setShowAddProp] = useState(false);
+  const [editingProp, setEditingProp] = useState<string | null>(null);
+
+  return (
+    <div className="px-4 py-3 bg-zinc-950/50 space-y-4">
+      {/* Component info badges */}
+      <div className="flex gap-2 text-[10px]">
+        {comp.isWetted && <span className="px-1.5 py-0.5 bg-blue-900/40 text-blue-400 border border-blue-800 rounded">wetted</span>}
+        {comp.isPressureBoundary && <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-400 border border-amber-800 rounded">pressure boundary</span>}
+        {comp.isPerStage && <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-400 border border-purple-800 rounded">per-stage</span>}
+        {comp.isRequired && <span className="px-1.5 py-0.5 bg-green-900/40 text-green-400 border border-green-800 rounded">required</span>}
+      </div>
+
+      {/* Part Numbers */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Part Numbers</span>
+          <button onClick={() => setShowAddPN(true)} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500">
+            Add Part Number
+          </button>
+        </div>
+
+        {showAddPN && (
+          <PartNumberForm
+            allModels={allModels}
+            onSave={async (data) => { await onAddPartNumber(comp.id, data); setShowAddPN(false); }}
+            onCancel={() => setShowAddPN(false)}
+          />
+        )}
+
+        {comp.partNumbers.length === 0 ? (
+          <p className="text-xs text-zinc-600">No part numbers yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {comp.partNumbers.map(pn => (
+              <div key={pn.id} className="border border-zinc-800 rounded bg-zinc-900">
+                {editingPN === pn.id ? (
+                  <div className="px-3 py-2">
+                    <PartNumberForm
+                      allModels={allModels}
+                      initial={{ partNumber: pn.partNumber, modelId: pn.model?.id || null, notes: pn.notes, lubricationTypes: pn.lubricationTypes, certifications: pn.certifications }}
+                      onSave={async (data) => { await onUpdatePartNumber(pn.id, data); setEditingPN(null); }}
+                      onCancel={() => setEditingPN(null)}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 px-3 py-2">
+                    <span className="text-sm text-zinc-100 font-mono">{pn.partNumber}</span>
+                    {pn.model && (
+                      <span className="text-[10px] text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-700">
+                        {pn.model.modelCode}
+                      </span>
+                    )}
+                    {!pn.model && (
+                      <span className="text-[10px] text-zinc-500 italic">all models</span>
+                    )}
+                    {pn.certifications && pn.certifications.length > 0 && (
+                      <span className="flex gap-0.5">
+                        {pn.certifications.map((c: string) => (
+                          <span key={c} className="text-[9px] px-1 py-0 bg-green-900/40 text-green-400 border border-green-800 rounded">{c}</span>
+                        ))}
+                      </span>
+                    )}
+                    {pn.lubricationTypes && pn.lubricationTypes.length > 0 && (
+                      <span className="flex gap-0.5">
+                        {pn.lubricationTypes.map((t: string) => (
+                          <span key={t} className="text-[9px] px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-800 rounded">{t.replace(/_/g, ' ')}</span>
+                        ))}
+                      </span>
+                    )}
+                    {pn.notes && (
+                      <span className="text-[10px] text-zinc-500 truncate max-w-[200px]" title={pn.notes}>{pn.notes}</span>
+                    )}
+                    <span className="text-xs text-zinc-600 ml-auto">
+                      {pn.drawings.length > 0 && `${pn.drawings.length} drawing${pn.drawings.length > 1 ? 's' : ''}`}
+                    </span>
+                    <button
+                      onClick={() => setExpandedPN(expandedPN === pn.id ? null : pn.id)}
+                      className="text-xs text-zinc-400 hover:text-zinc-200"
+                    >
+                      {expandedPN === pn.id ? 'Collapse' : 'Expand'}
+                    </button>
+                    <button
+                      onClick={() => setEditingPN(pn.id)}
+                      className="text-xs text-zinc-400 hover:text-zinc-200"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={async () => { if (confirm(`Delete part number "${pn.partNumber}" and all its drawings?`)) await onDeletePartNumber(pn.id); }}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+
+                {expandedPN === pn.id && editingPN !== pn.id && (
+                  <PartNumberDrawings
+                    pn={pn}
+                    onAddDrawing={onAddDrawing}
+                    onUpdateDrawing={onUpdateDrawing}
+                    onDeleteDrawing={onDeleteDrawing}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Property Definitions */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Properties</span>
+          <button onClick={() => setShowAddProp(true)} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500">
+            Add Property
+          </button>
+        </div>
+
+        {showAddProp && (
+          <PropertyDefForm
+            onSave={async (data) => { await onAddPropertyDef(comp.id, data); setShowAddProp(false); }}
+            onCancel={() => setShowAddProp(false)}
+          />
+        )}
+
+        {(!comp.propertyDefs || comp.propertyDefs.length === 0) ? (
+          <p className="text-xs text-zinc-600">No properties defined.</p>
+        ) : (
+          <div className="space-y-1">
+            {comp.propertyDefs.map(pd => (
+              <div key={pd.id}>
+                {editingProp === pd.id ? (
+                  <PropertyDefForm
+                    initial={pd}
+                    onSave={async (data) => { await onUpdatePropertyDef(pd.id, data); setEditingProp(null); }}
+                    onCancel={() => setEditingProp(null)}
+                  />
+                ) : (
+                  <div className="flex items-center gap-3 px-3 py-1.5 bg-zinc-900 rounded border border-zinc-800">
+                    <span className="text-xs text-zinc-500 font-mono w-36">{pd.propertyKey}</span>
+                    <span className="text-xs text-zinc-200 w-32">{pd.displayName}</span>
+                    <span className="text-[10px] text-zinc-500 w-12">{pd.unit || '—'}</span>
+                    <span className="text-[10px] text-zinc-600 w-16">{pd.dataType}</span>
+                    {pd.isRequired && <span className="text-[10px] text-green-400">req</span>}
+                    <span className="ml-auto" />
+                    <button onClick={() => setEditingProp(pd.id)} className="text-xs text-zinc-400 hover:text-zinc-200">Edit</button>
+                    <button
+                      onClick={async () => { if (confirm(`Delete property "${pd.displayName}"?`)) await onDeletePropertyDef(pd.id); }}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >Delete</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PartNumberDrawings({ pn, onAddDrawing, onUpdateDrawing, onDeleteDrawing }: {
+  pn: { id: string; drawings: ComponentDrawing[] };
+  onAddDrawing: (pnId: string, data: any) => Promise<void>;
+  onUpdateDrawing: (drawingId: string, data: any) => Promise<void>;
+  onDeleteDrawing: (drawingId: string) => Promise<void>;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingDrawing, setEditingDrawing] = useState<ComponentDrawing | null>(null);
+
+  return (
+    <div className="px-3 pb-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Drawings</span>
+        <button onClick={() => setShowAdd(true)} className="px-1.5 py-0.5 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-500">
+          Add Drawing
+        </button>
+      </div>
+
+      {showAdd && (
+        <DrawingForm
+          onSave={async (data) => { await onAddDrawing(pn.id, data); setShowAdd(false); }}
+          onCancel={() => setShowAdd(false)}
+        />
+      )}
+
+      {editingDrawing && (
+        <DrawingForm
+          initial={editingDrawing}
+          onSave={async (data) => { await onUpdateDrawing(editingDrawing.id, data); setEditingDrawing(null); }}
+          onCancel={() => setEditingDrawing(null)}
+        />
+      )}
+
+      {pn.drawings.length === 0 ? (
+        <p className="text-[10px] text-zinc-600">No drawings yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {pn.drawings.map(d => (
+            <div key={d.id} className="flex items-center gap-3 px-2 py-1.5 bg-zinc-950 rounded border border-zinc-800">
+              <span className="text-xs text-zinc-300 font-mono w-28">{d.drawingNumber}</span>
+              {d.title && <span className="text-xs text-zinc-400 flex-1">{d.title}</span>}
+              <a href={d.drawingUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300 underline">Open</a>
+              <button onClick={() => setEditingDrawing(d)} className="text-xs text-zinc-400 hover:text-zinc-200">Edit</button>
+              <button onClick={async () => { if (confirm(`Delete drawing "${d.drawingNumber}"?`)) await onDeleteDrawing(d.id); }} className="text-xs text-red-400 hover:text-red-300">Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PartNumberForm({ allModels, initial, onSave, onCancel }: {
+  allModels: { id: string; modelCode: string }[];
+  initial?: { partNumber: string; modelId: string | null; notes: string | null; lubricationTypes: string[] | null; certifications: string[] | null };
+  onSave: (data: any) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [partNumber, setPartNumber] = useState(initial?.partNumber || '');
+  const [modelId, setModelId] = useState(initial?.modelId || '');
+  const [notes, setNotes] = useState(initial?.notes || '');
+  const [lubeTypes, setLubeTypes] = useState<Set<string>>(new Set(initial?.lubricationTypes || []));
+  const [certs, setCerts] = useState<Set<string>>(new Set(initial?.certifications || []));
+  const [saving, setSaving] = useState(false);
+
+  const toggleLube = (t: string) => setLubeTypes(prev => { const s = new Set(prev); s.has(t) ? s.delete(t) : s.add(t); return s; });
+  const toggleCert = (c: string) => setCerts(prev => { const s = new Set(prev); s.has(c) ? s.delete(c) : s.add(c); return s; });
+
+  const handleSubmit = async () => {
+    if (!partNumber.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        part_number: partNumber.trim(),
+        model_id: modelId || null,
+        notes: notes.trim() || null,
+        lubrication_types: lubeTypes.size > 0 ? [...lubeTypes] : null,
+        certifications: certs.size > 0 ? [...certs] : null,
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="mb-3 p-3 border border-zinc-700 rounded bg-zinc-900 space-y-2">
+      <h4 className="text-xs font-medium text-zinc-300">{initial ? 'Edit' : 'Add'} Part Number</h4>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Part Number *</label>
+          <input value={partNumber} onChange={e => setPartNumber(e.target.value)} placeholder="PN-4521-A"
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" autoFocus />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Pump Model (optional)</label>
+          <select value={modelId} onChange={e => setModelId(e.target.value)}
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500">
+            <option value="">-- All models --</option>
+            {allModels.map(m => <option key={m.id} value={m.id}>{m.modelCode}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Notes (optional)</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes..."
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+      {/* Certifications */}
+      <div>
+        <label className="text-[10px] text-zinc-500 block mb-1">Certifications</label>
+        <div className="flex flex-wrap gap-1">
+          {CERTIFICATION_CODES.map(c => (
+            <button key={c} onClick={() => toggleCert(c)}
+              className={`px-1.5 py-0.5 text-[10px] rounded border ${certs.has(c) ? 'bg-green-900/50 text-green-400 border-green-700' : 'bg-zinc-800 text-zinc-500 border-zinc-700'} hover:border-zinc-500`}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Lubrication types */}
+      <div>
+        <label className="text-[10px] text-zinc-500 block mb-1">Lubrication Compatibility</label>
+        <div className="flex flex-wrap gap-1">
+          {OH_BB_LUBRICATION_TYPES.map(t => (
+            <button key={t} onClick={() => toggleLube(t)}
+              className={`px-1.5 py-0.5 text-[10px] rounded border ${lubeTypes.has(t) ? 'bg-blue-900/50 text-blue-400 border-blue-700' : 'bg-zinc-800 text-zinc-500 border-zinc-700'} hover:border-zinc-500`}>
+              {t.replace(/_/g, ' ')}
+            </button>
+          ))}
+        </div>
+        <p className="text-[9px] text-zinc-600 mt-0.5">Leave all unselected for universal compatibility</p>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSubmit} disabled={saving || !partNumber.trim()}
+          className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-500 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button onClick={onCancel} className="px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function DrawingForm({ initial, onSave, onCancel }: {
+  initial?: ComponentDrawing;
+  onSave: (data: any) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [drawingNumber, setDrawingNumber] = useState(initial?.drawingNumber || '');
+  const [drawingUrl, setDrawingUrl] = useState(initial?.drawingUrl || '');
+  const [title, setTitle] = useState(initial?.title || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!drawingNumber.trim() || !drawingUrl.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        drawing_number: drawingNumber.trim(),
+        drawing_url: drawingUrl.trim(),
+        title: title.trim() || null,
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="mb-3 p-3 border border-zinc-700 rounded bg-zinc-900 space-y-2">
+      <h4 className="text-xs font-medium text-zinc-300">{initial ? 'Edit' : 'Add'} Drawing</h4>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Drawing Number *</label>
+          <input value={drawingNumber} onChange={e => setDrawingNumber(e.target.value)} placeholder="DWG-4521-A"
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" autoFocus />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">URL *</label>
+          <input value={drawingUrl} onChange={e => setDrawingUrl(e.target.value)} placeholder="https://..."
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Title (optional)</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Assembly drawing"
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSubmit} disabled={saving || !drawingNumber.trim() || !drawingUrl.trim()}
+          className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-500 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button onClick={onCancel} className="px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function PropertyDefForm({ initial, onSave, onCancel }: {
+  initial?: ComponentPropertyDef;
+  onSave: (data: any) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [propertyKey, setPropertyKey] = useState(initial?.propertyKey || '');
+  const [displayName, setDisplayName] = useState(initial?.displayName || '');
+  const [unit, setUnit] = useState(initial?.unit || '');
+  const [dataType, setDataType] = useState(initial?.dataType || 'number');
+  const [isRequired, setIsRequired] = useState(initial?.isRequired || false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!propertyKey.trim() || !displayName.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        property_key: propertyKey.trim(),
+        display_name: displayName.trim(),
+        unit: unit.trim() || null,
+        data_type: dataType,
+        is_required: isRequired,
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="mb-3 p-3 border border-zinc-700 rounded bg-zinc-900 space-y-2">
+      <h4 className="text-xs font-medium text-zinc-300">{initial ? 'Edit' : 'Add'} Property</h4>
+      <div className="grid grid-cols-5 gap-2">
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Key *</label>
+          <input value={propertyKey} onChange={e => setPropertyKey(e.target.value)} placeholder="bore_dia_mm"
+            disabled={!!initial}
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500 disabled:opacity-50" autoFocus />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Display Name *</label>
+          <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Bore Diameter"
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Unit</label>
+          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="mm"
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Type</label>
+          <select value={dataType} onChange={e => setDataType(e.target.value)}
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500">
+            <option value="number">number</option>
+            <option value="text">text</option>
+            <option value="select">select</option>
+          </select>
+        </div>
+        <div className="flex items-end pb-1">
+          <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+            <input type="checkbox" checked={isRequired} onChange={e => setIsRequired(e.target.checked)}
+              className="rounded border-zinc-700" />
+            Required
+          </label>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSubmit} disabled={saving || !propertyKey.trim() || !displayName.trim()}
+          className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-500 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button onClick={onCancel} className="px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SHARED HELPERS
 // ============================================================================
 
 function Input({ label, value, onChange, type = 'text', placeholder, autoFocus }: {

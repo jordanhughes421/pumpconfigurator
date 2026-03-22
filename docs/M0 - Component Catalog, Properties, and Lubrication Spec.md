@@ -1,6 +1,7 @@
 # M0 — Component Catalog, Configurable Properties & Lubrication
 
 **Priority:** P0 — Must complete before all other milestones
+**Status:** ✅ Complete (all four features implemented 2026-03-22)
 **Last updated:** 2026-03-22
 
 ---
@@ -597,36 +598,41 @@ See Section 3.3 for the full suggested core set. Seed these for OH1, BB1, and VS
 
 ### Feature A: Part Numbers & Drawings
 
-- [ ] Admin can set a part number on any component definition via Catalog UI
-- [ ] Admin can add multiple drawings (number + URL + title) to a component
-- [ ] Admin can edit and delete drawings
-- [ ] Drawings appear as clickable links in the Materials Tab
-- [ ] Part number displays next to component name in Materials Tab
-- [ ] GET `/api/components/:hiTypeCode` returns `partNumber` and `drawings[]`
+- [x] Admin can set a part number on any component definition via Catalog UI
+- [x] Admin can add multiple drawings (number + URL + title) to a component
+- [x] Admin can edit and delete drawings
+- [x] Drawings appear as clickable links in the Materials Tab
+- [x] Part number displays next to component name in Materials Tab
+- [x] GET `/api/components/:hiTypeCode` returns `partNumbers[]` with nested `drawings[]`
+- [x] Part numbers support model-specific applicability with HI type validation
+- [x] Part numbers support lubrication type compatibility (filtered by active lube type)
+- [x] Part numbers support certification compliance tags (displayed as badges in UI)
+- [x] Part number selection available per component in configurator Materials Tab
 
 ### Feature B: Configurable Properties
 
-- [ ] Admin can define custom properties (key, name, unit, type) per component via Catalog UI
-- [ ] Core property set is seeded for OH1, BB1, VS1
-- [ ] Admin can add properties beyond the core set
-- [ ] Property columns appear dynamically in Materials Tab per component
-- [ ] Engineer can enter property values (dimensions) per component per configuration
-- [ ] Property values persist and reload on page refresh
-- [ ] Components with no property definitions show no extra columns (backwards compatible)
+- [x] Admin can define custom properties (key, name, unit, type) per component via Catalog UI
+- [x] Core property set is seeded for OH1, BB1, VS1
+- [x] Admin can add properties beyond the core set
+- [x] Property inputs appear dynamically in Materials Tab per component (collapsible)
+- [x] Engineer can enter property values (dimensions) per component per configuration
+- [x] Property values persist and reload on page refresh
+- [x] Components with no property definitions show no extra UI (backwards compatible)
 
 ### Feature C: Lubrication System
 
-- [ ] OH/BB configurations show a single global lubrication type selector
-- [ ] VS configurations show per-bearing-group lubrication selectors
-- [ ] Changing lubrication type adds/removes components from the BOM
-- [ ] Material dropdown filters based on active lubrication type
-- [ ] Certification-lubrication rules produce warnings when violated
-- [ ] Oil lube components (oil flinger, oil ring, constant level oiler) only appear when oil lube is selected
-- [ ] Shaft and bearing material options filter by lubrication compatibility
+- [x] OH/BB configurations show a single global lubrication type selector
+- [x] VS configurations show per-bearing-group lubrication selectors
+- [x] Changing lubrication type adds/removes components from the BOM
+- [x] Material dropdown filters based on active lubrication type
+- [x] Certification-lubrication rules produce warnings when violated
+- [x] Oil lube components (oil flinger, oil ring, constant level oiler) only appear when oil lube is selected
+- [x] Part numbers filter by lubrication compatibility
+- [x] API computes intersection of cert-restricted lube types (e.g., API610+FM → oil_ring, oil_bath only)
 
 ### Feature D: Selection Engine Bug Fix
 
-- [ ] Pumps with `rated_head < duty_head` are no longer returned
-- [ ] Pumps with `rated_head` up to 130% of duty head are returned
-- [ ] Scoring prefers pumps requiring minimal trim
-- [ ] Verify with sample duty point: flow=100 m3/h, head=45m — no pumps rated below 45m head appear
+- [x] Pumps with `rated_head < duty_head` are no longer returned
+- [x] Pumps with `rated_head` up to 130% of duty head are returned
+- [x] Scoring prefers pumps requiring minimal trim
+- [x] Verify with sample duty point: flow=100 m3/h, head=45m — no pumps rated below 45m head appear
