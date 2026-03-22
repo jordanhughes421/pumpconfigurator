@@ -23,6 +23,11 @@ export interface ConfigurationData {
   baseplateHasDrain: boolean;
   baseplateGroutType: string | null;
   baseplateDomestic: boolean;
+  sealType: string | null;
+  sealPlan: string | null;
+  sealFaceMaterial: string | null;
+  sealElastomer: string | null;
+  couplingType: string | null;
   validationStatus: string;
   validationMessages: any[];
   pumpSize: {

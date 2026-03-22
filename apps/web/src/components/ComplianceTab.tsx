@@ -1,6 +1,46 @@
 import { useState } from 'react';
 import { useConfigurationStore, type ConfigurationData, type ValidationResult } from '../stores/configurationStore';
 
+const SEAL_TYPE_LABELS: Record<string, string> = {
+  single_mechanical: 'Single Mechanical',
+  dual_mechanical: 'Dual Mechanical',
+  tandem_mechanical: 'Tandem Mechanical',
+  cartridge_single: 'Cartridge Single',
+  cartridge_dual: 'Cartridge Dual',
+  packed: 'Packed',
+  dynamic_expeller: 'Dynamic / Expeller',
+};
+
+const FACE_MATERIAL_LABELS: Record<string, string> = {
+  SiC_sintered: 'SiC Sintered',
+  SiC_reaction_bonded: 'SiC Reaction Bonded',
+  carbon_resin: 'Carbon (Resin)',
+  carbon_antimony: 'Carbon (Antimony)',
+  tungsten_carbide_co: 'WC (Co)',
+  tungsten_carbide_ni: 'WC (Ni)',
+  alumina: 'Alumina',
+};
+
+const ELASTOMER_LABELS: Record<string, string> = {
+  FKM_A: 'FKM Type A',
+  FKM_B: 'FKM Type B',
+  EPDM: 'EPDM',
+  NBR: 'NBR',
+  FFKM: 'FFKM',
+  PTFE: 'PTFE',
+};
+
+const COUPLING_LABELS: Record<string, string> = {
+  flexible_jaw: 'Flexible Jaw',
+  flexible_disc: 'Flexible Disc',
+  flexible_grid: 'Flexible Grid',
+  flexible_gear: 'Flexible Gear',
+  rigid_flange: 'Rigid Flange',
+  rigid_sleeve: 'Rigid Sleeve',
+  magnetic: 'Magnetic Drive',
+  spacer: 'Spacer',
+};
+
 interface Props {
   config: ConfigurationData;
 }
@@ -19,6 +59,8 @@ export function ComplianceTab({ config }: Props) {
       setRunning(false);
     }
   };
+
+  const isMechSeal = !!config.sealType && config.sealType !== 'packed' && config.sealType !== 'dynamic_expeller';
 
   const statusColor = (status: string) => ({
     valid: 'bg-green-900/50 text-green-400 border-green-700',
@@ -114,6 +156,11 @@ export function ComplianceTab({ config }: Props) {
               <SummaryRow label="Stages" value={String(config.numStages)} />
               <SummaryRow label="Tag" value={config.tagNumber || '--'} />
               <SummaryRow label="Service" value={config.service || '--'} />
+              <SummaryRow label="Seal Type" value={config.sealType ? (SEAL_TYPE_LABELS[config.sealType] || config.sealType) : '--'} />
+              {isMechSeal && <SummaryRow label="Seal Plan" value={config.sealPlan ? `Plan ${config.sealPlan}` : '--'} />}
+              {isMechSeal && <SummaryRow label="Face Material" value={config.sealFaceMaterial ? (FACE_MATERIAL_LABELS[config.sealFaceMaterial] || config.sealFaceMaterial) : '--'} />}
+              {isMechSeal && <SummaryRow label="Elastomer" value={config.sealElastomer ? (ELASTOMER_LABELS[config.sealElastomer] || config.sealElastomer) : '--'} />}
+              <SummaryRow label="Coupling" value={config.couplingType ? (COUPLING_LABELS[config.couplingType] || config.couplingType) : '--'} />
               <SummaryRow label="Motor" value={config.motor?.modelNumber || '--'} />
               <SummaryRow label="Baseplate" value={config.baseplate?.type?.replace(/_/g, ' ') || '--'} />
             </div>
@@ -122,12 +169,19 @@ export function ComplianceTab({ config }: Props) {
               <div className="mt-4">
                 <h5 className="text-xs text-zinc-400 mb-2">Material Selections</h5>
                 <div className="grid grid-cols-2 gap-1 text-xs">
-                  {config.materialSelections.map(ms => (
-                    <div key={ms.componentKey} className="flex justify-between py-0.5">
-                      <span className="text-zinc-400">{ms.componentKey}</span>
-                      <span className="text-zinc-300 font-mono">{ms.material.commonName}</span>
-                    </div>
-                  ))}
+                  {config.materialSelections.map(ms => {
+                    let label = ms.componentKey.replace(/_/g, ' ');
+                    if (ms.componentKey === 'mechanical_seal') {
+                      if (config.sealType === 'packed') label = 'packing';
+                      else if (config.sealType === 'dynamic_expeller') label = 'dynamic seal / expeller';
+                    }
+                    return (
+                      <div key={ms.componentKey} className="flex justify-between py-0.5">
+                        <span className="text-zinc-400">{label}</span>
+                        <span className="text-zinc-300 font-mono">{ms.material.commonName}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

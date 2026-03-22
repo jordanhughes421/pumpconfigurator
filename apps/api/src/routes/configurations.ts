@@ -84,7 +84,7 @@ router.put('/:id', async (req, res, next) => {
 
     const {
       tag_number, service, impeller_trim_mm, speed_rpm, num_stages,
-      motor_option_id, baseplate_id, seal_type, seal_plan, coupling_type,
+      motor_option_id, baseplate_id, seal_type, seal_plan, coupling_type, seal_face_material, seal_elastomer,
       baseplate_frame_type, baseplate_material, baseplate_has_drip_rim,
       baseplate_has_drain, baseplate_grout_type, baseplate_domestic,
       material_selections,
@@ -101,6 +101,8 @@ router.put('/:id', async (req, res, next) => {
     if (seal_type !== undefined) data.sealType = seal_type;
     if (seal_plan !== undefined) data.sealPlan = seal_plan;
     if (coupling_type !== undefined) data.couplingType = coupling_type;
+    if (seal_face_material !== undefined) data.sealFaceMaterial = seal_face_material;
+    if (seal_elastomer !== undefined) data.sealElastomer = seal_elastomer;
     if (baseplate_frame_type !== undefined) data.baseplateFrameType = baseplate_frame_type;
     if (baseplate_material !== undefined) data.baseplateMaterial = baseplate_material;
     if (baseplate_has_drip_rim !== undefined) data.baseplateHasDripRim = baseplate_has_drip_rim;

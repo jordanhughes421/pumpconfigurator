@@ -383,6 +383,8 @@ model PumpConfigurationRecord {
   sealType           String?  @map("seal_type") @db.VarChar(30)
   sealPlan           String?  @map("seal_plan") @db.VarChar(20)
   couplingType       String?  @map("coupling_type") @db.VarChar(30)
+  sealFaceMaterial   String?  @map("seal_face_material") @db.VarChar(30)
+  sealElastomer      String?  @map("seal_elastomer") @db.VarChar(20)
   // Baseplate customization
   baseplateFrameType String?  @map("baseplate_frame_type") @db.VarChar(30)
   baseplateMaterial  String?  @map("baseplate_material") @db.VarChar(50)

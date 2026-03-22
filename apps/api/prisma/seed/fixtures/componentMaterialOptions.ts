@@ -89,6 +89,8 @@ export const COMPONENT_MATERIAL_MAP: ComponentMaterialMap = {
       materials: [
         { code: 'SS_CF8M', isDefault: true, costTier: 3 },
         { code: 'DSS_4A', isDefault: false, costTier: 4 },
+        { code: 'PKG_GRAPHITE', isDefault: false, costTier: 1 },
+        { code: 'PKG_FOOD_GRADE', isDefault: false, costTier: 2 },
       ],
     },
     seal_plate: {

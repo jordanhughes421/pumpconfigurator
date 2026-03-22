@@ -24,6 +24,8 @@ export const sampleMaterialCertifications: MaterialCertSeedRow[] = [
   { materialCode: 'BRZ_C83600', certCode: 'NSF61', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'Passes NSF 61 extraction test but fails NSF 372 lead content' },
   { materialCode: 'BRZ_C89833', certCode: 'NSF61', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'DSS_4A', certCode: 'NSF61', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_GRAPHITE', certCode: 'NSF61', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'Graphite packing — NSF 61 compliant for potable water service' },
+  { materialCode: 'PKG_FOOD_GRADE', certCode: 'NSF61', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'FDA-compliant PTFE packing — passes NSF 61' },
 
   // =========================================================================
   // NSF 372 — Lead Content (all 8 materials)
@@ -36,6 +38,8 @@ export const sampleMaterialCertifications: MaterialCertSeedRow[] = [
   { materialCode: 'BRZ_C83600', certCode: 'NSF372', componentKey: null, isCertified: false, requiresCoating: false, coatingSpecification: null, notes: 'Lead content 5.0% exceeds 0.25% maximum — fails NSF 372' },
   { materialCode: 'BRZ_C89833', certCode: 'NSF372', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'Lead content 0.09% within 0.25% maximum' },
   { materialCode: 'DSS_4A', certCode: 'NSF372', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_GRAPHITE', certCode: 'NSF372', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'Lead content 0% — passes NSF 372' },
+  { materialCode: 'PKG_FOOD_GRADE', certCode: 'NSF372', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'Lead content 0% — passes NSF 372' },
 
   // =========================================================================
   // API 610 — Cast iron prohibited for pressure boundary
@@ -46,6 +50,8 @@ export const sampleMaterialCertifications: MaterialCertSeedRow[] = [
   { materialCode: 'SS_CF8', certCode: 'API610', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'CS_WCB', certCode: 'API610', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'DSS_4A', certCode: 'API610', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_GRAPHITE', certCode: 'API610', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'Graphite packing acceptable per API 610' },
+  { materialCode: 'PKG_FOOD_GRADE', certCode: 'API610', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: 'PTFE packing acceptable per API 610' },
 
   // =========================================================================
   // WRAS — Water Regulations Advisory Scheme (wetted materials)
@@ -54,6 +60,8 @@ export const sampleMaterialCertifications: MaterialCertSeedRow[] = [
   { materialCode: 'SS_CF8', certCode: 'WRAS', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'BRZ_C89833', certCode: 'WRAS', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'DSS_4A', certCode: 'WRAS', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_GRAPHITE', certCode: 'WRAS', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_FOOD_GRADE', certCode: 'WRAS', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
 
   // =========================================================================
   // CE_PED — Pressure Equipment Directive (pressure boundary materials)
@@ -64,4 +72,6 @@ export const sampleMaterialCertifications: MaterialCertSeedRow[] = [
   { materialCode: 'SS_CF8', certCode: 'CE_PED', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'CS_WCB', certCode: 'CE_PED', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
   { materialCode: 'DSS_4A', certCode: 'CE_PED', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_GRAPHITE', certCode: 'CE_PED', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
+  { materialCode: 'PKG_FOOD_GRADE', certCode: 'CE_PED', componentKey: null, isCertified: true, requiresCoating: false, coatingSpecification: null, notes: null },
 ];

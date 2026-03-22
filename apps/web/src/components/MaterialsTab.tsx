@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiGet, apiPost } from '../lib/api';
 import { useConfigurationStore, type ConfigurationData } from '../stores/configurationStore';
 import type { CertificationCode } from '@magnum-opus/shared';
+import { SEAL_TYPES, SEAL_FACE_MATERIALS, SEAL_ELASTOMERS } from '@magnum-opus/shared';
 
 interface ComponentDef {
   id: string;
@@ -38,6 +39,74 @@ interface ValidationResult {
   summary: { hard_blocks: number; cert_blocks: number; warnings: number; advisories: number };
 }
 
+// --- Seal & coupling constants ---
+
+const SEAL_TYPE_LABELS: Record<string, string> = {
+  single_mechanical: 'Single Mechanical',
+  dual_mechanical: 'Dual Mechanical (back-to-back)',
+  tandem_mechanical: 'Tandem Mechanical',
+  cartridge_single: 'Cartridge — Single',
+  cartridge_dual: 'Cartridge — Dual',
+  packed: 'Packed (Compression Packing)',
+  dynamic_expeller: 'Dynamic / Expeller',
+};
+
+const SEAL_PLAN_OPTIONS = [
+  { value: '', label: '-- None --' },
+  { value: '01', label: 'Plan 01 — Internal recirculation' },
+  { value: '02', label: 'Plan 02 — Dead-ended' },
+  { value: '11', label: 'Plan 11 — Recirculation from pump discharge' },
+  { value: '13', label: 'Plan 13 — Recirculation from seal chamber' },
+  { value: '14', label: 'Plan 14 — Discharge through cyclone separator' },
+  { value: '21', label: 'Plan 21 — Jacket cooled seal chamber' },
+  { value: '23', label: 'Plan 23 — Recirculation from seal through heat exchanger' },
+  { value: '32', label: 'Plan 32 — External fluid injection (clean)' },
+  { value: '52', label: 'Plan 52 — Unpressurized external buffer fluid' },
+  { value: '53A', label: 'Plan 53A — Pressurized barrier fluid (bladder)' },
+  { value: '53B', label: 'Plan 53B — Pressurized barrier fluid (piston)' },
+  { value: '53C', label: 'Plan 53C — Pressurized barrier fluid (external)' },
+  { value: '54', label: 'Plan 54 — Pressurized external barrier fluid' },
+  { value: '62', label: 'Plan 62 — External quench (steam/N₂)' },
+  { value: '72', label: 'Plan 72 — External buffer with heat exchanger' },
+];
+
+const FACE_MATERIAL_LABELS: Record<string, string> = {
+  SiC_sintered: 'Silicon Carbide — Sintered (SSiC)',
+  SiC_reaction_bonded: 'Silicon Carbide — Reaction Bonded (RBSiC)',
+  carbon_resin: 'Carbon — Resin Impregnated',
+  carbon_antimony: 'Carbon — Antimony Impregnated',
+  tungsten_carbide_co: 'Tungsten Carbide (Co binder)',
+  tungsten_carbide_ni: 'Tungsten Carbide (Ni binder)',
+  alumina: 'Alumina (Al₂O₃)',
+};
+
+const ELASTOMER_LABELS: Record<string, string> = {
+  FKM_A: 'FKM Type A (Viton A)',
+  FKM_B: 'FKM Type B (Viton B)',
+  EPDM: 'EPDM',
+  NBR: 'NBR (Buna-N)',
+  FFKM: 'FFKM (Kalrez / Chemraz)',
+  PTFE: 'PTFE (Teflon)',
+};
+
+const COUPLING_TYPES = [
+  { value: 'flexible_jaw', label: 'Flexible Jaw (Lovejoy)' },
+  { value: 'flexible_disc', label: 'Flexible Disc' },
+  { value: 'flexible_grid', label: 'Flexible Grid (Falk)' },
+  { value: 'flexible_gear', label: 'Flexible Gear' },
+  { value: 'rigid_flange', label: 'Rigid Flange' },
+  { value: 'rigid_sleeve', label: 'Rigid Sleeve' },
+  { value: 'magnetic', label: 'Magnetic Drive' },
+  { value: 'spacer', label: 'Spacer Coupling' },
+];
+
+// Components whose display/materials adapt based on seal type selection
+const SEAL_COMPONENT_KEYS = new Set(['mechanical_seal', 'shaft_sleeve']);
+
+// Packing material codes — when seal type is 'packed', only show these for mechanical_seal;
+// when mechanical seal is selected (or no selection), hide these.
+const PACKING_MATERIAL_PREFIX = 'PKG_';
+
 interface Props {
   config: ConfigurationData;
   certs: CertificationCode[];
@@ -54,6 +123,46 @@ export function MaterialsTab({ config, certs }: Props) {
   const selectionsRef = useRef(selections);
   selectionsRef.current = selections;
   const initializedRef = useRef(false);
+
+  // Seal & coupling local state
+  const [sealType, setSealType] = useState(config.sealType || '');
+  const [sealPlan, setSealPlan] = useState(config.sealPlan || '');
+  const [sealFaceMaterial, setSealFaceMaterial] = useState(config.sealFaceMaterial || '');
+  const [sealElastomer, setSealElastomer] = useState(config.sealElastomer || '');
+  const [couplingType, setCouplingType] = useState(config.couplingType || '');
+
+  const isPacked = sealType === 'packed';
+  const isDynamic = sealType === 'dynamic_expeller';
+  const isMechanical = sealType !== '' && !isPacked && !isDynamic;
+  const isDual = ['dual_mechanical', 'cartridge_dual', 'tandem_mechanical'].includes(sealType);
+  const requiresAPI610 = certs.includes('API610' as CertificationCode);
+
+  const saveSealCoupling = (updates: Record<string, unknown>) => {
+    updateConfiguration(config.id, updates);
+  };
+
+  // Determine display name override and visibility for seal-related components
+  const getSealComponentDisplay = (comp: ComponentDef): { visible: boolean; displayName: string; requiredOverride?: boolean } => {
+    if (comp.componentKey === 'mechanical_seal') {
+      if (!sealType || isMechanical) {
+        return { visible: true, displayName: comp.displayName };
+      }
+      if (isPacked) {
+        return { visible: true, displayName: 'Packing', requiredOverride: true };
+      }
+      if (isDynamic) {
+        return { visible: true, displayName: 'Dynamic Seal / Expeller', requiredOverride: true };
+      }
+    }
+    if (comp.componentKey === 'shaft_sleeve') {
+      if (isPacked) {
+        return { visible: true, displayName: comp.displayName, requiredOverride: true };
+      }
+      // Optional with mechanical seal / hidden if no seal type
+      return { visible: true, displayName: comp.displayName };
+    }
+    return { visible: true, displayName: comp.displayName };
+  };
 
   // Load component definitions
   useEffect(() => {
@@ -129,6 +238,16 @@ export function MaterialsTab({ config, certs }: Props) {
     }
   }, [optionsMap, components, config.id, updateConfiguration]);
 
+  // Filter materials for the mechanical_seal component based on seal type
+  const getFilteredOpts = (componentKey: string, opts: MaterialOpt[]): MaterialOpt[] => {
+    if (componentKey !== 'mechanical_seal') return opts;
+    if (isPacked) {
+      return opts.filter(m => m.material_code.startsWith(PACKING_MATERIAL_PREFIX));
+    }
+    // Mechanical seal or no selection: hide packing materials
+    return opts.filter(m => !m.material_code.startsWith(PACKING_MATERIAL_PREFIX));
+  };
+
   const handleSelect = (componentKey: string, materialId: string) => {
     setSelections(prev => ({ ...prev, [componentKey]: materialId }));
     setInvalidKeys(prev => { const s = new Set(prev); s.delete(componentKey); return s; });
@@ -137,6 +256,40 @@ export function MaterialsTab({ config, certs }: Props) {
     updateConfiguration(config.id, {
       material_selections: [{ component_key: componentKey, material_id: materialId }],
     });
+  };
+
+  const setAllCheapest = () => {
+    const newSel: Record<string, string> = {};
+    const entries: { component_key: string; material_id: string }[] = [];
+    for (const comp of components) {
+      const opts = getFilteredOpts(comp.componentKey, optionsMap[comp.componentKey] || []);
+      if (opts.length === 0) continue;
+      const cheapest = opts.reduce((best, m) => m.cost_tier < best.cost_tier ? m : best, opts[0]);
+      newSel[comp.componentKey] = cheapest.id;
+      entries.push({ component_key: comp.componentKey, material_id: cheapest.id });
+    }
+    setSelections(newSel);
+    setInvalidKeys(new Set());
+    if (entries.length > 0) {
+      updateConfiguration(config.id, { material_selections: entries });
+    }
+  };
+
+  const resetToDefaults = () => {
+    const newSel: Record<string, string> = {};
+    const entries: { component_key: string; material_id: string }[] = [];
+    for (const comp of components) {
+      const opts = getFilteredOpts(comp.componentKey, optionsMap[comp.componentKey] || []);
+      if (opts.length === 0) continue;
+      const def = opts.find(m => m.is_default) || opts[0];
+      newSel[comp.componentKey] = def.id;
+      entries.push({ component_key: comp.componentKey, material_id: def.id });
+    }
+    setSelections(newSel);
+    setInvalidKeys(new Set());
+    if (entries.length > 0) {
+      updateConfiguration(config.id, { material_selections: entries });
+    }
   };
 
   const runValidation = async () => {
@@ -154,11 +307,89 @@ export function MaterialsTab({ config, certs }: Props) {
 
   return (
     <div>
+      {/* Seal & Coupling Configuration */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="p-3 border border-zinc-800 rounded-lg bg-zinc-900 space-y-3">
+          <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Seal</h3>
+          <SmallSelect
+            label="Type"
+            value={sealType}
+            onChange={v => { setSealType(v); saveSealCoupling({ seal_type: v || null }); }}
+            options={SEAL_TYPES.map(t => ({ value: t, label: SEAL_TYPE_LABELS[t] || t }))}
+            placeholder="-- Select seal type --"
+          />
+          {requiresAPI610 && isPacked && (
+            <p className="text-[10px] text-amber-400">API 610 generally requires mechanical seals, not packing.</p>
+          )}
+          {isMechanical && (
+            <>
+              <SmallSelect
+                label="Seal Plan"
+                value={sealPlan}
+                onChange={v => { setSealPlan(v); saveSealCoupling({ seal_plan: v || null }); }}
+                options={SEAL_PLAN_OPTIONS.map(p => ({ value: p.value, label: p.label }))}
+              />
+              {isDual && sealPlan !== '' && !['52', '53A', '53B', '53C', '54', '72'].includes(sealPlan) && (
+                <p className="text-[10px] text-amber-400">Dual/tandem seals typically require Plan 52, 53, or 54.</p>
+              )}
+              <SmallSelect
+                label="Face Material"
+                value={sealFaceMaterial}
+                onChange={v => { setSealFaceMaterial(v); saveSealCoupling({ seal_face_material: v || null }); }}
+                options={SEAL_FACE_MATERIALS.map(m => ({ value: m, label: FACE_MATERIAL_LABELS[m] || m }))}
+                placeholder="-- Select face material --"
+              />
+              <SmallSelect
+                label="Elastomer"
+                value={sealElastomer}
+                onChange={v => { setSealElastomer(v); saveSealCoupling({ seal_elastomer: v || null }); }}
+                options={SEAL_ELASTOMERS.map(e => ({ value: e, label: ELASTOMER_LABELS[e] || e }))}
+                placeholder="-- Select elastomer --"
+              />
+            </>
+          )}
+        </div>
+
+        <div className="p-3 border border-zinc-800 rounded-lg bg-zinc-900 space-y-3">
+          <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Coupling</h3>
+          <SmallSelect
+            label="Type"
+            value={couplingType}
+            onChange={v => { setCouplingType(v); saveSealCoupling({ coupling_type: v || null }); }}
+            options={COUPLING_TYPES}
+            placeholder="-- Select coupling type --"
+          />
+        </div>
+      </div>
+
+      {/* Bulk actions */}
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={setAllCheapest}
+          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-sm rounded border border-zinc-700 hover:bg-zinc-700"
+        >
+          Set Cheapest Compliant
+        </button>
+        <button
+          onClick={resetToDefaults}
+          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-sm rounded border border-zinc-700 hover:bg-zinc-700"
+        >
+          Reset to Defaults
+        </button>
+      </div>
+
+      {/* Component material rows */}
       <div className="space-y-1">
         {components.map(comp => {
-          const opts = optionsMap[comp.componentKey] || [];
+          const display = getSealComponentDisplay(comp);
+          if (!display.visible) return null;
+
+          const rawOpts = optionsMap[comp.componentKey] || [];
+          const opts = getFilteredOpts(comp.componentKey, rawOpts);
           const selected = selections[comp.componentKey];
-          const isInvalid = invalidKeys.has(comp.componentKey);
+          const isInvalid = invalidKeys.has(comp.componentKey)
+            || (selected && !opts.some(m => m.id === selected));
+          const isRequired = display.requiredOverride ?? comp.isRequired;
 
           return (
             <div
@@ -168,15 +399,21 @@ export function MaterialsTab({ config, certs }: Props) {
               }`}
             >
               <div className="w-48 flex-shrink-0">
-                <span className="text-sm text-zinc-100">{comp.displayName}</span>
+                <span className="text-sm text-zinc-100">
+                  {display.displayName}
+                  {!isRequired && <span className="text-zinc-600 text-xs ml-1">(optional)</span>}
+                </span>
                 <div className="flex gap-1 mt-0.5">
                   {comp.isWetted && <Badge text="wetted" color="blue" />}
                   {comp.isPressureBoundary && <Badge text="pressure" color="amber" />}
+                  {SEAL_COMPONENT_KEYS.has(comp.componentKey) && sealType && (
+                    <Badge text={isPacked ? 'packed' : isMechanical ? 'mech seal' : 'dynamic'} color="blue" />
+                  )}
                 </div>
               </div>
 
               <select
-                value={selected || ''}
+                value={selected && opts.some(m => m.id === selected) ? selected : ''}
                 onChange={e => handleSelect(comp.componentKey, e.target.value)}
                 className="flex-1 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
               >
@@ -230,6 +467,30 @@ export function MaterialsTab({ config, certs }: Props) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// --- Small helper components ---
+
+function SmallSelect({ label, value, onChange, options, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] text-zinc-500 mb-0.5">{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-blue-500"
+      >
+        {placeholder && <option value="">{placeholder}</option>}
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   );
 }
