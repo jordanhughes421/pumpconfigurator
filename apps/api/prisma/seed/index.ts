@@ -455,6 +455,8 @@ async function seedGeometryData() {
         qBepM3h: tr.qBepM3h, hBepM: tr.hBepM,
         etaBepPct: tr.etaBepPct, pBepKw: tr.pBepKw,
         npshrAtBepM: tr.npshrAtBepM, hShutoffM: tr.hShutoffM,
+        dataPointsBefore: tr.dataPointsBefore ?? undefined,
+        dataPointsAfter: tr.dataPointsAfter ?? undefined,
         modificationsApplied: tr.modificationsApplied,
         testType: tr.testType,
         testDate: new Date(tr.testDate),

@@ -90,6 +90,178 @@ router.get('/options', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/materials/:id — Single material with certifications and component assignments
+router.get('/:id', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) {
+      res.status(400).json({ error: 'Invalid material ID' });
+      return;
+    }
+    const material = await prisma.material.findUnique({
+      where: { id: req.params.id },
+      include: {
+        certifications: { include: { certification: true } },
+        materialOptions: { include: { componentDef: true } },
+      },
+    });
+    if (!material) {
+      res.status(404).json({ error: `Material not found: ${req.params.id}` });
+      return;
+    }
+    res.json(material);
+  } catch (err) { next(err); }
+});
+
+// POST /api/materials — Create a material
+router.post('/', async (req, res, next) => {
+  try {
+    const b = req.body;
+    if (!b.material_code || !b.common_name || !b.material_group) {
+      res.status(400).json({ error: 'material_code, common_name, material_group are required' });
+      return;
+    }
+    const material = await prisma.material.create({
+      data: {
+        materialCode: b.material_code,
+        commonName: b.common_name,
+        specification: b.specification ?? null,
+        unsNumber: b.uns_number ?? null,
+        materialGroup: b.material_group,
+        maxTemperatureC: b.max_temperature_c ?? null,
+        maxPressureBar: b.max_pressure_bar ?? null,
+        leadContentPct: b.lead_content_pct ?? null,
+        isFerrous: b.is_ferrous ?? null,
+        domesticSourceAvailable: b.domestic_source_available ?? true,
+        densityKgM3: b.density_kg_m3 ?? null,
+        hardnessMinBhn: b.hardness_min_bhn ?? null,
+        hardnessMaxBhn: b.hardness_max_bhn ?? null,
+        isHardenable: b.is_hardenable ?? false,
+        hardeningMethods: b.hardening_methods ?? null,
+        hardenedMinBhn: b.hardened_min_bhn ?? null,
+        hardenedMaxBhn: b.hardened_max_bhn ?? null,
+        hardenedMaxHrc: b.hardened_max_hrc ?? null,
+        notes: b.notes ?? null,
+      },
+    });
+    res.status(201).json(material);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/materials/:id — Update a material
+router.put('/:id', async (req, res, next) => {
+  try {
+    const b = req.body;
+    const data: any = {};
+    if (b.material_code !== undefined) data.materialCode = b.material_code;
+    if (b.common_name !== undefined) data.commonName = b.common_name;
+    if (b.specification !== undefined) data.specification = b.specification;
+    if (b.uns_number !== undefined) data.unsNumber = b.uns_number;
+    if (b.material_group !== undefined) data.materialGroup = b.material_group;
+    if (b.max_temperature_c !== undefined) data.maxTemperatureC = b.max_temperature_c;
+    if (b.max_pressure_bar !== undefined) data.maxPressureBar = b.max_pressure_bar;
+    if (b.lead_content_pct !== undefined) data.leadContentPct = b.lead_content_pct;
+    if (b.is_ferrous !== undefined) data.isFerrous = b.is_ferrous;
+    if (b.domestic_source_available !== undefined) data.domesticSourceAvailable = b.domestic_source_available;
+    if (b.density_kg_m3 !== undefined) data.densityKgM3 = b.density_kg_m3;
+    if (b.hardness_min_bhn !== undefined) data.hardnessMinBhn = b.hardness_min_bhn;
+    if (b.hardness_max_bhn !== undefined) data.hardnessMaxBhn = b.hardness_max_bhn;
+    if (b.is_hardenable !== undefined) data.isHardenable = b.is_hardenable;
+    if (b.hardening_methods !== undefined) data.hardeningMethods = b.hardening_methods;
+    if (b.hardened_min_bhn !== undefined) data.hardenedMinBhn = b.hardened_min_bhn;
+    if (b.hardened_max_bhn !== undefined) data.hardenedMaxBhn = b.hardened_max_bhn;
+    if (b.hardened_max_hrc !== undefined) data.hardenedMaxHrc = b.hardened_max_hrc;
+    if (b.notes !== undefined) data.notes = b.notes;
+
+    const material = await prisma.material.update({
+      where: { id: req.params.id },
+      data,
+    });
+    res.json(material);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/materials/:id
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await prisma.material.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// PUT /api/materials/:id/certifications — Set certifications for a material
+router.put('/:id/certifications', async (req, res, next) => {
+  try {
+    const { certifications } = req.body;
+    if (!Array.isArray(certifications)) {
+      res.status(400).json({ error: 'certifications must be an array of { certification_code, component_key?, notes? }' });
+      return;
+    }
+
+    // Delete existing and re-create
+    await prisma.materialCertification.deleteMany({ where: { materialId: req.params.id } });
+
+    const certRows = await prisma.certification.findMany();
+    const certMap = new Map(certRows.map(c => [c.code, c.id]));
+
+    const creates = [];
+    for (const c of certifications) {
+      const certId = certMap.get(c.certification_code);
+      if (!certId) continue;
+      creates.push({
+        materialId: req.params.id,
+        certificationId: certId,
+        componentKey: c.component_key ?? null,
+        isCertified: c.is_certified ?? true,
+        certificationNumber: c.certification_number ?? null,
+        requiresCoating: c.requires_coating ?? false,
+        coatingSpecification: c.coating_specification ?? null,
+        notes: c.notes ?? null,
+      });
+    }
+    if (creates.length > 0) {
+      await prisma.materialCertification.createMany({ data: creates });
+    }
+
+    const updated = await prisma.material.findUnique({
+      where: { id: req.params.id },
+      include: { certifications: { include: { certification: true } } },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/materials/:id/components — Set allowed component assignments
+router.put('/:id/components', async (req, res, next) => {
+  try {
+    const { components } = req.body;
+    if (!Array.isArray(components)) {
+      res.status(400).json({ error: 'components must be an array of { component_def_id, is_default?, is_standard?, cost_tier? }' });
+      return;
+    }
+
+    // Delete existing assignments for this material and re-create
+    await prisma.componentMaterialOption.deleteMany({ where: { materialId: req.params.id } });
+
+    const creates = components.map((c: any) => ({
+      componentDefId: c.component_def_id,
+      materialId: req.params.id,
+      isDefault: c.is_default ?? false,
+      isStandard: c.is_standard ?? true,
+      costTier: c.cost_tier ?? 1,
+      notes: c.notes ?? null,
+    }));
+    if (creates.length > 0) {
+      await prisma.componentMaterialOption.createMany({ data: creates });
+    }
+
+    const updated = await prisma.material.findUnique({
+      where: { id: req.params.id },
+      include: { materialOptions: { include: { componentDef: true } } },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
 // POST /api/materials/validate — Validate a complete set of material selections
 router.post('/validate', async (req, res, next) => {
   try {

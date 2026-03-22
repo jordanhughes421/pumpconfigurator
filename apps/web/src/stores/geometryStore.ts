@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiGet } from '../lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api';
 
 export interface ModelSummary {
   id: string;
@@ -79,6 +79,14 @@ export interface GeometryModification {
   createdAt: string;
 }
 
+export interface TestDataPoint {
+  q: number;
+  h: number;
+  p: number;
+  eta: number;
+  npshr: number;
+}
+
 export interface GeometryTestResult {
   id: string;
   impellerGeometryId: string;
@@ -98,6 +106,8 @@ export interface GeometryTestResult {
   pBepKw: string | null;
   npshrAtBepM: string | null;
   hShutoffM: string | null;
+  dataPointsBefore: TestDataPoint[] | null;
+  dataPointsAfter: TestDataPoint[] | null;
   modificationsApplied: string[] | null;
   testType: string | null;
   testDate: string | null;
@@ -124,15 +134,34 @@ interface GeometryState {
   loading: boolean;
   error: string | null;
 
+  // Fetch
   fetchModelSummaries: () => Promise<void>;
   fetchImpellers: (modelId?: string) => Promise<void>;
   fetchVolutes: (modelId?: string) => Promise<void>;
   fetchModifications: (params?: { impellerGeometryId?: string; voluteGeometryId?: string }) => Promise<void>;
-  fetchTestResults: (params?: { impellerGeometryId?: string }) => Promise<void>;
+  fetchTestResults: (params?: { impellerGeometryId?: string; voluteGeometryId?: string }) => Promise<void>;
   fetchCorrelation: (feature: string, target: string, modelId?: string) => Promise<void>;
+
+  // Impeller CRUD
+  createImpeller: (data: any) => Promise<ImpellerGeometry>;
+  updateImpeller: (id: string, data: any) => Promise<void>;
+  deleteImpeller: (id: string) => Promise<void>;
+
+  // Volute CRUD
+  createVolute: (data: any) => Promise<VoluteGeometry>;
+  updateVolute: (id: string, data: any) => Promise<void>;
+  deleteVolute: (id: string) => Promise<void>;
+
+  // Modification CRUD
+  createModification: (data: any) => Promise<GeometryModification>;
+  deleteModification: (id: string) => Promise<void>;
+
+  // Test Result CRUD
+  createTestResult: (data: any) => Promise<GeometryTestResult>;
+  deleteTestResult: (id: string) => Promise<void>;
 }
 
-export const useGeometryStore = create<GeometryState>((set) => ({
+export const useGeometryStore = create<GeometryState>((set, get) => ({
   modelSummaries: [],
   impellers: [],
   volutes: [],
@@ -193,6 +222,7 @@ export const useGeometryStore = create<GeometryState>((set) => ({
     try {
       const qs = new URLSearchParams();
       if (params?.impellerGeometryId) qs.set('impellerGeometryId', params.impellerGeometryId);
+      if (params?.voluteGeometryId) qs.set('voluteGeometryId', params.voluteGeometryId);
       const q = qs.toString();
       const data = await apiGet<GeometryTestResult[]>(`/api/geometry/test-results${q ? '?' + q : ''}`);
       set({ testResults: data, loading: false });
@@ -211,5 +241,67 @@ export const useGeometryStore = create<GeometryState>((set) => ({
     } catch (err: any) {
       set({ error: err.message, loading: false });
     }
+  },
+
+  // ─── Impeller CRUD ───────────────────────────────────────────────
+
+  createImpeller: async (data) => {
+    const imp = await apiPost<ImpellerGeometry>('/api/geometry/impellers', data);
+    set({ impellers: [...get().impellers, { ...imp, modifications: [], testResults: [], model: null }] });
+    return imp;
+  },
+
+  updateImpeller: async (id, data) => {
+    const updated = await apiPut<ImpellerGeometry>(`/api/geometry/impellers/${id}`, data);
+    set({ impellers: get().impellers.map(i => i.id === id ? { ...i, ...updated } : i) });
+  },
+
+  deleteImpeller: async (id) => {
+    await apiDelete(`/api/geometry/impellers/${id}`);
+    set({ impellers: get().impellers.filter(i => i.id !== id) });
+  },
+
+  // ─── Volute CRUD ─────────────────────────────────────────────────
+
+  createVolute: async (data) => {
+    const vol = await apiPost<VoluteGeometry>('/api/geometry/volutes', data);
+    set({ volutes: [...get().volutes, { ...vol, modifications: [], testResults: [], model: null }] });
+    return vol;
+  },
+
+  updateVolute: async (id, data) => {
+    const updated = await apiPut<VoluteGeometry>(`/api/geometry/volutes/${id}`, data);
+    set({ volutes: get().volutes.map(v => v.id === id ? { ...v, ...updated } : v) });
+  },
+
+  deleteVolute: async (id) => {
+    await apiDelete(`/api/geometry/volutes/${id}`);
+    set({ volutes: get().volutes.filter(v => v.id !== id) });
+  },
+
+  // ─── Modification CRUD ───────────────────────────────────────────
+
+  createModification: async (data) => {
+    const mod = await apiPost<GeometryModification>('/api/geometry/modifications', data);
+    set({ modifications: [...get().modifications, mod] });
+    return mod;
+  },
+
+  deleteModification: async (id) => {
+    await apiDelete(`/api/geometry/modifications/${id}`);
+    set({ modifications: get().modifications.filter(m => m.id !== id) });
+  },
+
+  // ─── Test Result CRUD ────────────────────────────────────────────
+
+  createTestResult: async (data) => {
+    const result = await apiPost<GeometryTestResult>('/api/geometry/test-results', data);
+    set({ testResults: [...get().testResults, result] });
+    return result;
+  },
+
+  deleteTestResult: async (id) => {
+    await apiDelete(`/api/geometry/test-results/${id}`);
+    set({ testResults: get().testResults.filter(r => r.id !== id) });
   },
 }));

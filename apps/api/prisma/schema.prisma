@@ -574,6 +574,8 @@ model GeometryTestResult {
   npshrAtBepM           Decimal? @map("NPSHr_at_bep_m") @db.Decimal(6, 2)
   hShutoffM             Decimal? @map("H_shutoff_m") @db.Decimal(10, 2)
   curveSetId            String?  @map("curve_set_id")
+  dataPointsBefore      Json?    @map("data_points_before")
+  dataPointsAfter       Json?    @map("data_points_after")
   modificationsApplied  Json?    @map("modifications_applied")
   testType              String?  @map("test_type") @db.VarChar(30)
   testDate              DateTime? @map("test_date") @db.Date

@@ -8,10 +8,18 @@ import { ModelGeometryPage } from './pages/ModelGeometryPage';
 import { ImpellerDetailPage } from './pages/ImpellerDetailPage';
 import { VoluteDetailPage } from './pages/VoluteDetailPage';
 import { CorrelationsPage } from './pages/CorrelationsPage';
+import { CatalogPage } from './pages/CatalogPage';
+
+function navClass(active: boolean) {
+  return `px-2 py-1 rounded ${active ? 'text-zinc-100 bg-zinc-800' : 'text-zinc-400 hover:text-zinc-200'}`;
+}
 
 export default function App() {
   const location = useLocation();
-  const isGeometry = location.pathname.startsWith('/geometry');
+  const path = location.pathname;
+  const isGeometry = path.startsWith('/geometry');
+  const isCatalog = path.startsWith('/catalog');
+  const isProjects = !isGeometry && !isCatalog;
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -21,18 +29,9 @@ export default function App() {
         </Link>
         <span className="text-xs text-zinc-500 font-mono">Pump Configurator</span>
         <nav className="ml-auto flex gap-3 text-sm">
-          <Link
-            to="/"
-            className={`px-2 py-1 rounded ${!isGeometry ? 'text-zinc-100 bg-zinc-800' : 'text-zinc-400 hover:text-zinc-200'}`}
-          >
-            Projects
-          </Link>
-          <Link
-            to="/geometry"
-            className={`px-2 py-1 rounded ${isGeometry ? 'text-zinc-100 bg-zinc-800' : 'text-zinc-400 hover:text-zinc-200'}`}
-          >
-            Geometry
-          </Link>
+          <Link to="/" className={navClass(isProjects)}>Projects</Link>
+          <Link to="/catalog" className={navClass(isCatalog)}>Catalog</Link>
+          <Link to="/geometry" className={navClass(isGeometry)}>Geometry</Link>
         </nav>
       </header>
       <main className="max-w-[1600px] mx-auto px-6 py-6">
@@ -41,6 +40,7 @@ export default function App() {
           <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="/projects/:projectId/select" element={<SelectionPage />} />
           <Route path="/projects/:projectId/configure/:configId" element={<ConfiguratorPage />} />
+          <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/geometry" element={<GeometryDashboard />} />
           <Route path="/geometry/models/:modelId" element={<ModelGeometryPage />} />
           <Route path="/geometry/impellers/:impellerId" element={<ImpellerDetailPage />} />

@@ -72,6 +72,17 @@ router.put('/impellers/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /api/geometry/impellers/:id
+router.delete('/impellers/:id', async (req, res, next) => {
+  try {
+    // Delete related test results first, then modifications, then the impeller
+    await prisma.geometryTestResult.deleteMany({ where: { impellerGeometryId: req.params.id } });
+    await prisma.geometryModification.deleteMany({ where: { impellerGeometryId: req.params.id } });
+    await prisma.impellerGeometry.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
 // ─── Volute Geometries ──────────────────────────────────────────────
 
 // GET /api/geometry/volutes?modelId=...
@@ -128,6 +139,16 @@ router.put('/volutes/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /api/geometry/volutes/:id
+router.delete('/volutes/:id', async (req, res, next) => {
+  try {
+    await prisma.geometryTestResult.deleteMany({ where: { voluteGeometryId: req.params.id } });
+    await prisma.geometryModification.deleteMany({ where: { voluteGeometryId: req.params.id } });
+    await prisma.voluteGeometry.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
 // ─── Modifications ──────────────────────────────────────────────────
 
 // GET /api/geometry/modifications?impellerGeometryId=...&voluteGeometryId=...
@@ -162,6 +183,27 @@ router.post('/modifications', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// PUT /api/geometry/modifications/:id
+router.put('/modifications/:id', async (req, res, next) => {
+  try {
+    const existing = await prisma.geometryModification.findUnique({ where: { id: req.params.id } });
+    if (!existing) { res.status(404).json({ error: 'Modification not found' }); return; }
+    const mod = await prisma.geometryModification.update({
+      where: { id: req.params.id },
+      data: req.body,
+    });
+    res.json(mod);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/geometry/modifications/:id
+router.delete('/modifications/:id', async (req, res, next) => {
+  try {
+    await prisma.geometryModification.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
 // ─── Test Results ───────────────────────────────────────────────────
 
 // GET /api/geometry/test-results?impellerGeometryId=...
@@ -183,16 +225,68 @@ router.get('/test-results', async (req, res, next) => {
 // POST /api/geometry/test-results
 router.post('/test-results', async (req, res, next) => {
   try {
-    const { impellerGeometryId, voluteGeometryId, d2ActualMm, speedRpm, ...rest } = req.body;
+    const { impellerGeometryId, voluteGeometryId, d2ActualMm, speedRpm, dataPointsBefore, dataPointsAfter, ...rest } = req.body;
     if (!impellerGeometryId || !voluteGeometryId || d2ActualMm == null || speedRpm == null) {
       res.status(400).json({ error: 'impeller_geometry_id, volute_geometry_id, D2_actual_mm, and speed_rpm are required' });
       return;
     }
 
+    // Validate data point arrays (up to 20 points each)
+    for (const [label, pts] of [['dataPointsBefore', dataPointsBefore], ['dataPointsAfter', dataPointsAfter]] as const) {
+      if (pts != null) {
+        if (!Array.isArray(pts) || pts.length > 20) {
+          res.status(400).json({ error: `${label} must be an array of up to 20 data points` });
+          return;
+        }
+      }
+    }
+
     const result = await prisma.geometryTestResult.create({
-      data: { impellerGeometryId, voluteGeometryId, d2ActualMm, speedRpm, ...rest },
+      data: {
+        impellerGeometryId, voluteGeometryId, d2ActualMm, speedRpm,
+        dataPointsBefore: dataPointsBefore ?? undefined,
+        dataPointsAfter: dataPointsAfter ?? undefined,
+        ...rest,
+      },
     });
     res.status(201).json(result);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/geometry/test-results/:id
+router.put('/test-results/:id', async (req, res, next) => {
+  try {
+    const existing = await prisma.geometryTestResult.findUnique({ where: { id: req.params.id } });
+    if (!existing) { res.status(404).json({ error: 'Test result not found' }); return; }
+
+    const { dataPointsBefore, dataPointsAfter, ...rest } = req.body;
+
+    for (const [label, pts] of [['dataPointsBefore', dataPointsBefore], ['dataPointsAfter', dataPointsAfter]] as const) {
+      if (pts != null) {
+        if (!Array.isArray(pts) || pts.length > 20) {
+          res.status(400).json({ error: `${label} must be an array of up to 20 data points` });
+          return;
+        }
+      }
+    }
+
+    const result = await prisma.geometryTestResult.update({
+      where: { id: req.params.id },
+      data: {
+        ...rest,
+        ...(dataPointsBefore !== undefined ? { dataPointsBefore } : {}),
+        ...(dataPointsAfter !== undefined ? { dataPointsAfter } : {}),
+      },
+    });
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/geometry/test-results/:id
+router.delete('/test-results/:id', async (req, res, next) => {
+  try {
+    await prisma.geometryTestResult.delete({ where: { id: req.params.id } });
+    res.status(204).end();
   } catch (err) { next(err); }
 });
 
@@ -263,11 +357,8 @@ router.get('/models/summary', async (_req, res, next) => {
       orderBy: { modelCode: 'asc' },
     });
 
-    // Only return models that have geometry data
-    const withGeometry = models.filter(m => m._count.impellerGeometries > 0 || m._count.voluteGeometries > 0);
-
     const summary = await Promise.all(
-      withGeometry.map(async m => {
+      models.map(async m => {
         const testCount = await prisma.geometryTestResult.count({
           where: { impellerGeometry: { modelId: m.id } },
         });
