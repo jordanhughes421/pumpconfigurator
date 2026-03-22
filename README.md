@@ -38,13 +38,17 @@ pnpm --filter @magnum-opus/api dev &
 pnpm --filter @magnum-opus/api verify
 ```
 
-### Run the API
+### Run the Application
 
 ```bash
+# Terminal 1: API server
 pnpm --filter @magnum-opus/api dev
+
+# Terminal 2: Frontend dev server
+pnpm --filter @magnum-opus/web dev
 ```
 
-The API runs at `http://localhost:3001`.
+The API runs at `http://localhost:3001`. The frontend runs at `http://localhost:5173`.
 
 ## API Endpoints
 
@@ -73,6 +77,31 @@ The API runs at `http://localhost:3001`.
 | `/api/materials/options` | GET | Filtered materials for a component: `?componentDefId=X&certs=NSF61,BABA&tempC=60` |
 | `/api/materials/validate` | POST | Validate a complete set of material selections against certifications |
 | `/api/certifications/:code/constraints` | GET | Get motor + baseplate constraints for a certification |
+
+### Configuration & Project Management (Phase 5)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/projects` | GET/POST | List/create projects |
+| `/api/projects/:id` | GET/PUT | Get/update project with configurations |
+| `/api/configurations` | POST | Create a new configuration |
+| `/api/configurations/:id` | GET/PUT/DELETE | Configuration CRUD |
+| `/api/configurations/:id/validate` | POST | Run four-tier validation on a configuration |
+| `/api/motors/options` | GET | Motor options filtered by `?modelId=` and `?certifications=` |
+| `/api/baseplates/options` | GET | Baseplate options filtered by `?modelId=` |
+
+### Geometry & Correlation Analysis (Phase 6)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/geometry/models/summary` | GET | Models with geometry data counts |
+| `/api/geometry/impellers` | GET/POST | List/create impeller geometries (`?modelId=` filter) |
+| `/api/geometry/impellers/:id` | GET/PUT | Impeller detail with modifications and test results |
+| `/api/geometry/volutes` | GET/POST | List/create volute geometries (`?modelId=` filter) |
+| `/api/geometry/volutes/:id` | GET/PUT | Volute detail with modifications and test results |
+| `/api/geometry/modifications` | GET/POST | Modification history (`?impellerGeometryId=` / `?voluteGeometryId=` filter) |
+| `/api/geometry/test-results` | GET/POST | Test results (`?impellerGeometryId=` filter) |
+| `/api/geometry/correlations` | GET | Linear regression: `?feature=trimRatio&target=etaBepPct&modelId=` |
 
 ### Reference Data (Phase 1)
 
@@ -132,16 +161,22 @@ pumpconfigurator/
 ├── apps/
 │   ├── api/                    # Express API + Prisma ORM
 │   │   ├── src/
-│   │   │   ├── routes/         # Express route handlers
-│   │   │   ├── services/       # Business logic (selection engine, curve engine)
+│   │   │   ├── routes/         # pumps, materials, certs, components, curves, geometry, configs, projects, motors, baseplates
+│   │   │   ├── services/       # selectionEngine, curveEngine, materialEngine, certificationEngine, validationEngine, correlationEngine
 │   │   │   └── middleware/     # Request validation
 │   │   ├── prisma/
 │   │   │   ├── schema.prisma   # 20+ tables (pumps, materials, certs, geometry)
 │   │   │   ├── migrations/
 │   │   │   └── seed/           # Seed fixtures + importer stubs
 │   │   └── scripts/
-│   │       └── verify.ts       # Smoke test (Phase 1 + 2 + 3 checks)
-│   └── web/                    # React frontend (Phase 5)
+│   │       └── verify.ts       # Smoke tests (Phase 1–6)
+│   ├── web/                    # React 18 + Vite + Tailwind CSS + Zustand + D3.js
+│   │   └── src/
+│   │       ├── pages/          # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, Correlations
+│   │       ├── components/     # HQChart, HydraulicTab, MaterialsTab, MotorTab, BaseplateTab, ComplianceTab, CertificationBar
+│   │       ├── stores/         # Zustand stores: project, selection, configuration, curve, geometry
+│   │       └── lib/            # API client
+│   └── compute/                # Python microservice (future)
 ├── packages/
 │   └── shared/                 # Shared types, constants, curve math (ESM + CJS)
 ├── docker-compose.yml          # PostgreSQL 16
@@ -164,8 +199,28 @@ The database ships with sample data clearly labeled with `[SAMPLE]` prefixes:
 | `component_material_option` | 83 | Per-component material assignments with defaults and cost tiers |
 | `performance_curve_set` | 12 | One reference curve set per pump size |
 | `curve_data` | 48 | 4 curves (HQ, EQ, PQ, NPSHR) per curve set |
+| `motor_option` | 10 | Standard motor ratings (0.75–200 kW) |
+| `baseplate_option` | 5 | Cast iron, fabricated steel, stainless, concrete, spring-isolated |
+| `impeller_geometry` | 5 | 3 OH1 + 2 BB1 impeller revisions |
+| `volute_geometry` | 2 | OH1 single volute + BB1 double volute |
+| `geometry_modification` | 4 | Trim, vane backfile, cutwater file, eye boreout |
+| `geometry_test_result` | 6 | Factory/field test results with BEP performance |
 
 Full data import stubs exist at `apps/api/prisma/seed/importers/` for the complete 380+ components, 117+ materials, and certification mappings from the Magnum Opus spec.
+
+## Frontend
+
+The React frontend provides a full configuration workflow:
+
+- **Projects** — Create projects with certification requirements, manage multiple pump configurations per project
+- **Pump Selection** — Enter duty point (flow, head, NPSH, fluid), view ranked candidates sorted by score
+- **Configurator** — Tabbed interface for each configuration:
+  - **Hydraulic** — Interactive H-Q curve chart (D3.js) with trim/speed sliders, system curve overlay, operating point solver. Curve math runs client-side via `@magnum-opus/shared` for <16ms response
+  - **Materials** — Per-component material dropdowns filtered by active certifications
+  - **Motor** — Motor selection table filtered by power requirements and certifications
+  - **Baseplate** — Baseplate type selection cards
+  - **Compliance** — Four-tier validation (hard_block/cert_block/warning/advisory) with configuration summary
+- **Geometry** — Impeller/volute geometry dashboard, modification history with before/after diffs, test result tracking, correlation scatter chart with linear regression
 
 ## Phase Status
 
@@ -173,5 +228,5 @@ Full data import stubs exist at `apps/api/prisma/seed/importers/` for the comple
 - **Phase 2** ✓ Selection engine API — duty point search, scoring (BEP/efficiency/NPSH), constraint filtering, detail endpoints
 - **Phase 3** ✓ Performance curve engine — polynomial/spline evaluation, affinity law scaling, Brent's method operating point solver
 - **Phase 4** ✓ Material selection & certification engine — per-component filtering, 14 cert rules, validation (completeness/lead/BABA/galvanic)
-- **Phase 5** — Configuration UI
-- **Phase 6** — Geometry/curve customization module
+- **Phase 5** ✓ Configuration UI — React 18 + Vite + Tailwind + Zustand + D3.js, tabbed configurator, client-side curve scaling, CORS integration
+- **Phase 6** ✓ Geometry/curve customization module — impeller/volute geometry CRUD, modification tracking, test results, correlation analysis with linear regression

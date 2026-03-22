@@ -17,14 +17,14 @@ Two spec documents live in the repo root — read these before building anything
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18+ / TypeScript 5+ / Tailwind CSS 3+ (Phase 5) |
-| State | Zustand 4+ (Phase 5) |
-| Charting | D3.js v7 with React wrapper (Phase 5) |
+| Frontend | React 18 / TypeScript 5 / Vite 6 / Tailwind CSS 3 |
+| State | Zustand 4 |
+| Charting | D3.js v7 with React wrapper |
 | API | Node.js 20+ / Express / TypeScript |
 | Database | PostgreSQL 16 (Docker Compose) |
 | ORM | Prisma |
-| Compute | Python 3.11+ / FastAPI (Phase 6 — not yet needed) |
-| Cache | Redis 7+ (Phase 4 — not yet needed) |
+| Compute | Python 3.11+ / FastAPI (future — not yet needed) |
+| Cache | Redis 7+ (future — not yet needed) |
 | Monorepo | pnpm workspaces |
 
 ## Project Structure
@@ -32,21 +32,26 @@ Two spec documents live in the repo root — read these before building anything
 ```
 pumpconfigurator/
 ├── apps/
-│   ├── api/          # Express API + Prisma ORM (Phase 1-3 complete)
+│   ├── api/          # Express API + Prisma ORM (Phase 1-6 complete)
 │   │   ├── src/
-│   │   │   ├── routes/       # pumps, materials, certifications, components, curves
-│   │   │   ├── services/     # selectionEngine, curveEngine, materialEngine, certificationEngine, validationEngine
+│   │   │   ├── routes/       # pumps, materials, certifications, components, curves, geometry, projects, configurations, motors, baseplates
+│   │   │   ├── services/     # selectionEngine, curveEngine, materialEngine, certificationEngine, validationEngine, correlationEngine
 │   │   │   └── middleware/   # validateRequest
 │   │   ├── prisma/
 │   │   │   ├── schema.prisma # 20+ tables
-│   │   │   └── seed/         # Fixtures + importer stubs
-│   │   └── scripts/verify.ts # Smoke tests for all phases
-│   ├── web/          # React frontend (Phase 5 — not started)
-│   └── compute/      # Python microservice (Phase 6 — not started)
+│   │   │   └── seed/         # Fixtures (pumps, materials, certs, curves, motors, baseplates, geometry)
+│   │   └── scripts/verify.ts # Smoke tests for all phases (1-6)
+│   ├── web/          # React 18 + Vite + Tailwind + Zustand + D3.js (Phase 5-6 complete)
+│   │   └── src/
+│   │       ├── pages/        # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, ModelGeometry, ImpellerDetail, VoluteDetail, Correlations
+│   │       ├── components/   # HQChart, HydraulicTab, MaterialsTab, MotorTab, BaseplateTab, ComplianceTab, CertificationBar
+│   │       ├── stores/       # Zustand: project, selection, configuration, curve, geometry
+│   │       └── lib/          # API client (apiGet, apiPost, apiPut, apiDelete)
+│   └── compute/      # Python microservice (future)
 ├── packages/
 │   └── shared/       # Types, constants, curve math (dual ESM + CJS)
 │       └── src/
-│           ├── constants.ts      # HI types, certs, materials, etc.
+│           ├── constants.ts      # HI types, certs, materials, modification codes, etc.
 │           ├── types.ts          # 15 interfaces (DutyPoint, CurveSet, etc.)
 │           ├── curveEngine.ts    # Polynomial (Horner), cubic spline, linear interp
 │           ├── affinityLaws.ts   # Speed/trim scaling with Pfleiderer correction
@@ -61,8 +66,8 @@ pumpconfigurator/
 2. **Selection Engine API** ✅ — POST duty point → ranked pump candidates with BEP/efficiency/NPSH scoring, constraint filtering, detail endpoints
 3. **Performance Curve Engine** ✅ — Polynomial/spline/linear evaluation, affinity law scaling (speed + trim), Brent's method operating point solver, 3 API endpoints, sample curves for all 12 sizes
 4. **Material Selection & Certification Engine** ✅ — 5-step material filtering pipeline, 14 certification rules (NSF61/372/BABA/FM/API610/ATEX/etc.), validation engine (completeness, lead average, BABA, galvanic), 83 component-material options, 32 cert mappings
-5. **Configuration UI** — Full configurator with tabs (Hydraulic, Materials, Motor, Baseplate, Compliance)
-6. **Geometry/Curve Customization Module** — Geometry data entry, modification tracking, correlation analysis
+5. **Configuration UI** ✅ — React 18 + Vite + Tailwind + Zustand + D3.js, project/config CRUD, tabbed configurator (Hydraulic, Materials, Motor, Baseplate, Compliance), interactive H-Q chart with client-side curve scaling, motor/baseplate seed data, CORS
+6. **Geometry/Curve Customization Module** ✅ — Impeller/volute geometry CRUD, modification tracking with before/after diffs, test results, correlation analysis with linear regression, D3 scatter chart, geometry dashboard and detail pages
 
 ## Critical Domain Rules
 
@@ -78,10 +83,12 @@ pumpconfigurator/
 ## Common Commands
 
 ```bash
-pnpm --filter @magnum-opus/shared build    # Build shared package (must run before API)
+pnpm --filter @magnum-opus/shared build    # Build shared package (must run before API or web)
 pnpm --filter @magnum-opus/api dev         # Start API dev server (port 3001)
+pnpm --filter @magnum-opus/web dev         # Start frontend dev server (port 5173)
+pnpm --filter @magnum-opus/web build       # Production build of frontend
 pnpm --filter @magnum-opus/api seed        # Seed database
-pnpm --filter @magnum-opus/api verify      # Run all phase smoke tests
+pnpm --filter @magnum-opus/api verify      # Run all phase smoke tests (1-6)
 docker compose up -d                        # Start PostgreSQL
 ```
 
@@ -95,7 +102,7 @@ PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes" pnpm --filter @magnum-opus/api
 - **Three-layer pump abstraction:** Universal Pump Interface → Flow-Regime Behaviors → Type-Specific Logic. Adding a new HI type requires one class, one factory registration, and DB entries — no schema changes.
 - **Hybrid configuration engine:** Forward-chaining rule engine for discrete decisions (type selection, material filtering, certification enforcement) + continuous constraint solver for impeller trim, speed, and staging optimization.
 - **Four-tier validation:** `hard_block` → `cert_block` → `warning` → `advisory`.
-- **Shared curve math (dual-use):** `curveEngine.ts`, `affinityLaws.ts`, `operatingPoint.ts` in `packages/shared/` — used server-side today, designed to also run client-side for real-time slider interaction in Phase 5.
+- **Shared curve math (dual-use):** `curveEngine.ts`, `affinityLaws.ts`, `operatingPoint.ts` in `packages/shared/` — used both server-side (API) and client-side (React frontend) for real-time slider interaction with <16ms response.
 
 ## HI Pump Types
 
