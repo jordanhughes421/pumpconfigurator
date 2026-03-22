@@ -9,6 +9,8 @@ import { importMaterials } from './importers/materialsImporter.js';
 import { importMaterialCertifications } from './importers/materialCertificationsImporter.js';
 import { samplePerformanceCurves } from './fixtures/performanceCurves.js';
 import { COMPONENT_MATERIAL_MAP } from './fixtures/componentMaterialOptions.js';
+import { sampleMotorOptions, sampleBaseplateOptions } from './fixtures/motorOptions.js';
+import { sampleImpellers, sampleVolutes, sampleModifications, sampleTestResults } from './fixtures/geometryData.js';
 
 const prisma = new PrismaClient();
 
@@ -260,6 +262,209 @@ async function seedComponentMaterialOptions() {
   console.log(`  Seeded ${count} component-material options`);
 }
 
+async function seedMotorsAndBaseplates() {
+  console.log('Seeding motor options...');
+  const motorIds: string[] = [];
+  for (const motor of sampleMotorOptions) {
+    const existing = await prisma.motorOption.findFirst({
+      where: { modelNumber: motor.modelNumber },
+    });
+    if (existing) {
+      motorIds.push(existing.id);
+      continue;
+    }
+    const created = await prisma.motorOption.create({ data: motor });
+    motorIds.push(created.id);
+  }
+  console.log(`  Seeded ${motorIds.length} motor options`);
+
+  console.log('Seeding baseplate options...');
+  const baseplateIds: string[] = [];
+  for (const bp of sampleBaseplateOptions) {
+    const existing = await prisma.baseplateOption.findFirst({
+      where: { type: bp.type, material: bp.material },
+    });
+    if (existing) {
+      baseplateIds.push(existing.id);
+      continue;
+    }
+    const created = await prisma.baseplateOption.create({ data: bp });
+    baseplateIds.push(created.id);
+  }
+  console.log(`  Seeded ${baseplateIds.length} baseplate options`);
+
+  // Link motors and baseplates to pump models
+  console.log('Linking motors and baseplates to pump models...');
+  const allModels = await prisma.pumpModel.findMany();
+  let motorLinks = 0;
+  let baseplateLinks = 0;
+
+  for (const model of allModels) {
+    for (const motorId of motorIds) {
+      const exists = await prisma.pumpModelMotor.findUnique({
+        where: { modelId_motorOptionId: { modelId: model.id, motorOptionId: motorId } },
+      });
+      if (!exists) {
+        await prisma.pumpModelMotor.create({
+          data: { modelId: model.id, motorOptionId: motorId },
+        });
+        motorLinks++;
+      }
+    }
+    for (const baseplateId of baseplateIds) {
+      const exists = await prisma.pumpModelBaseplate.findUnique({
+        where: { modelId_baseplateId: { modelId: model.id, baseplateId } },
+      });
+      if (!exists) {
+        await prisma.pumpModelBaseplate.create({
+          data: { modelId: model.id, baseplateId },
+        });
+        baseplateLinks++;
+      }
+    }
+  }
+  console.log(`  Linked ${motorLinks} model-motor pairs, ${baseplateLinks} model-baseplate pairs`);
+}
+
+async function seedGeometryData() {
+  console.log('Seeding geometry data...');
+
+  // Build lookup: modelCode → modelId
+  const models = await prisma.pumpModel.findMany();
+  const modelByCode = new Map(models.map(m => [m.modelCode, m.id]));
+
+  // Impellers — track label → id for cross-referencing
+  const impellerIds = new Map<string, string>();
+  for (const imp of sampleImpellers) {
+    const modelId = modelByCode.get(imp.modelCode);
+    if (!modelId) { console.warn(`  Skipping impeller ${imp.label}: model ${imp.modelCode} not found`); continue; }
+    const existing = await prisma.impellerGeometry.findFirst({
+      where: { modelId, patternNumber: imp.patternNumber },
+    });
+    if (existing) { impellerIds.set(imp.label, existing.id); continue; }
+    const created = await prisma.impellerGeometry.create({
+      data: {
+        modelId, patternNumber: imp.patternNumber, revision: imp.revision,
+        d1Mm: imp.d1Mm, dHubMm: imp.dHubMm, beta1HubDeg: imp.beta1HubDeg,
+        beta1ShroudDeg: imp.beta1ShroudDeg, b1Mm: imp.b1Mm,
+        z: imp.z, zSplit: imp.zSplit, beta2Deg: imp.beta2Deg,
+        thetaWrapDeg: imp.thetaWrapDeg, t1Mm: imp.t1Mm, t2Mm: imp.t2Mm,
+        bladeProfileType: imp.bladeProfileType, raCastUm: imp.raCastUm,
+        raMachinedUm: imp.raMachinedUm, d2MaxMm: imp.d2MaxMm,
+        b2Mm: imp.b2Mm, a2TotalMm2: imp.a2TotalMm2,
+        lOverlapOriginalMm: imp.lOverlapOriginalMm,
+        shroudExtensionMm: imp.shroudExtensionMm,
+        shroudType: imp.shroudType, dSealFMm: imp.dSealFMm,
+        dSealBMm: imp.dSealBMm, hasBackVanes: imp.hasBackVanes,
+        deltaWrFMm: imp.deltaWrFMm, deltaWrBMm: imp.deltaWrBMm,
+        wrType: imp.wrType, blockageFactor: imp.blockageFactor,
+        slipFactor: imp.slipFactor, source: imp.source,
+      },
+    });
+    impellerIds.set(imp.label, created.id);
+  }
+  console.log(`  Seeded ${impellerIds.size} impeller geometries`);
+
+  // Volutes
+  const voluteIds = new Map<string, string>();
+  for (const vol of sampleVolutes) {
+    const modelId = modelByCode.get(vol.modelCode);
+    if (!modelId) { console.warn(`  Skipping volute ${vol.label}: model ${vol.modelCode} not found`); continue; }
+    const existing = await prisma.voluteGeometry.findFirst({
+      where: { modelId, patternNumber: vol.patternNumber },
+    });
+    if (existing) { voluteIds.set(vol.label, existing.id); continue; }
+    const created = await prisma.voluteGeometry.create({
+      data: {
+        modelId, patternNumber: vol.patternNumber, voluteType: vol.voluteType,
+        a3Mm2: vol.a3Mm2, b3Mm: vol.b3Mm, d3Mm: vol.d3Mm,
+        deltaCwMm: vol.deltaCwMm, thetaCwDeg: vol.thetaCwDeg,
+        cwLipProfile: vol.cwLipProfile, dBcMm: vol.dBcMm,
+        aDnMm2: vol.aDnMm2, hasSplitter: vol.hasSplitter,
+        hasDiffuserVanes: vol.hasDiffuserVanes, source: vol.source,
+      },
+    });
+    voluteIds.set(vol.label, created.id);
+  }
+  console.log(`  Seeded ${voluteIds.size} volute geometries`);
+
+  // Modifications
+  let modCount = 0;
+  for (const mod of sampleModifications) {
+    const geomId = mod.targetType === 'impeller'
+      ? impellerIds.get(mod.geometryLabel)
+      : voluteIds.get(mod.geometryLabel);
+    if (!geomId) { console.warn(`  Skipping mod ${mod.modificationCode}: geometry ${mod.geometryLabel} not found`); continue; }
+
+    const whereClause: any = {
+      modificationCode: mod.modificationCode,
+      sequenceOrder: mod.sequenceOrder,
+    };
+    if (mod.targetType === 'impeller') whereClause.impellerGeometryId = geomId;
+    else whereClause.voluteGeometryId = geomId;
+
+    const existing = await prisma.geometryModification.findFirst({ where: whereClause });
+    if (existing) continue;
+
+    await prisma.geometryModification.create({
+      data: {
+        targetType: mod.targetType,
+        impellerGeometryId: mod.targetType === 'impeller' ? geomId : null,
+        voluteGeometryId: mod.targetType === 'volute' ? geomId : null,
+        modificationCode: mod.modificationCode,
+        modificationCategory: mod.modificationCategory,
+        sequenceOrder: mod.sequenceOrder,
+        geometryBefore: mod.geometryBefore,
+        geometryAfter: mod.geometryAfter,
+        parameters: mod.parameters,
+        predictedEffect: mod.predictedEffect,
+        datePerformed: new Date(mod.datePerformed),
+        performedBy: mod.performedBy,
+        notes: mod.notes,
+      },
+    });
+    modCount++;
+  }
+  console.log(`  Seeded ${modCount} geometry modifications`);
+
+  // Test results
+  let testCount = 0;
+  for (const tr of sampleTestResults) {
+    const impId = impellerIds.get(tr.impellerLabel);
+    const volId = voluteIds.get(tr.voluteLabel);
+    if (!impId || !volId) {
+      console.warn(`  Skipping test result: imp=${tr.impellerLabel} vol=${tr.voluteLabel} not found`);
+      continue;
+    }
+
+    const existing = await prisma.geometryTestResult.findFirst({
+      where: { impellerGeometryId: impId, voluteGeometryId: volId, d2ActualMm: tr.d2ActualMm, testDate: new Date(tr.testDate) },
+    });
+    if (existing) continue;
+
+    await prisma.geometryTestResult.create({
+      data: {
+        impellerGeometryId: impId, voluteGeometryId: volId,
+        d2ActualMm: tr.d2ActualMm, trimRatio: tr.trimRatio,
+        beta2EffectiveDeg: tr.beta2EffectiveDeg,
+        deltaCwActualMm: tr.deltaCwActualMm,
+        areaRatioActual: tr.areaRatioActual,
+        bGapRatioActual: tr.bGapRatioActual,
+        overlapRatio: tr.overlapRatio,
+        nsActual: tr.nsActual, speedRpm: tr.speedRpm,
+        qBepM3h: tr.qBepM3h, hBepM: tr.hBepM,
+        etaBepPct: tr.etaBepPct, pBepKw: tr.pBepKw,
+        npshrAtBepM: tr.npshrAtBepM, hShutoffM: tr.hShutoffM,
+        modificationsApplied: tr.modificationsApplied,
+        testType: tr.testType,
+        testDate: new Date(tr.testDate),
+      },
+    });
+    testCount++;
+  }
+  console.log(`  Seeded ${testCount} geometry test results`);
+}
+
 async function logCounts() {
   const counts = {
     pump_family: await prisma.pumpFamily.count(),
@@ -272,6 +477,14 @@ async function logCounts() {
     component_material_option: await prisma.componentMaterialOption.count(),
     performance_curve_set: await prisma.performanceCurveSet.count(),
     curve_data: await prisma.curveData.count(),
+    motor_option: await prisma.motorOption.count(),
+    baseplate_option: await prisma.baseplateOption.count(),
+    pump_model_motor: await prisma.pumpModelMotor.count(),
+    pump_model_baseplate: await prisma.pumpModelBaseplate.count(),
+    impeller_geometry: await prisma.impellerGeometry.count(),
+    volute_geometry: await prisma.voluteGeometry.count(),
+    geometry_modification: await prisma.geometryModification.count(),
+    geometry_test_result: await prisma.geometryTestResult.count(),
   };
 
   console.log('\n--- Seed Complete ---');
@@ -293,6 +506,8 @@ async function main() {
   await seedMaterialCertifications();
   await seedComponentMaterialOptions();
   await seedPerformanceCurves();
+  await seedMotorsAndBaseplates();
+  await seedGeometryData();
 
   // Layer 2: Import-ready placeholders (currently warn-only)
   console.log('\n--- Layer 2: Full data importers ---');

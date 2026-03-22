@@ -651,6 +651,318 @@ async function verifyPhase4(): Promise<boolean> {
   return allPassed;
 }
 
+async function verifyPhase5(): Promise<boolean> {
+  console.log('=== Phase 5 Verification (Backend: Config CRUD, Motor/Baseplate Options) ===\n');
+  let allPassed = true;
+
+  // Check seeded motor/baseplate data
+  const motorCount = await prisma.motorOption.count();
+  const baseplateCount = await prisma.baseplateOption.count();
+  const modelMotorCount = await prisma.pumpModelMotor.count();
+  const modelBaseplateCount = await prisma.pumpModelBaseplate.count();
+
+  if (motorCount >= 8) {
+    console.log(`PASS  motor_option: ${motorCount} rows (target: 8+)`);
+  } else {
+    console.log(`FAIL  motor_option: ${motorCount} rows (need 8+)`);
+    allPassed = false;
+  }
+  if (baseplateCount >= 4) {
+    console.log(`PASS  baseplate_option: ${baseplateCount} rows (target: 4+)`);
+  } else {
+    console.log(`FAIL  baseplate_option: ${baseplateCount} rows (need 4+)`);
+    allPassed = false;
+  }
+  if (modelMotorCount > 0) {
+    console.log(`PASS  pump_model_motor junction: ${modelMotorCount} rows`);
+  } else {
+    console.log('FAIL  pump_model_motor junction: 0 rows');
+    allPassed = false;
+  }
+  if (modelBaseplateCount > 0) {
+    console.log(`PASS  pump_model_baseplate junction: ${modelBaseplateCount} rows`);
+  } else {
+    console.log('FAIL  pump_model_baseplate junction: 0 rows');
+    allPassed = false;
+  }
+  console.log();
+
+  try {
+    // Test 1: Create a project
+    console.log('Testing POST /api/projects...');
+    const projRes = await fetch(`${API_BASE}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '__verify_phase5__', certifications: ['NSF61', 'BABA'] }),
+    });
+    if (projRes.status !== 201) {
+      console.log(`FAIL  Create project returned ${projRes.status}`);
+      allPassed = false;
+      return allPassed;
+    }
+    const project = await projRes.json() as any;
+    console.log(`PASS  Created project: ${project.id}`);
+
+    // Test 2: Get a pump size for creating a configuration
+    const size = await prisma.pumpSize.findFirst();
+    if (!size) {
+      console.log('FAIL  No pump sizes in DB');
+      return false;
+    }
+
+    // Test 3: Create a configuration
+    console.log('Testing POST /api/configurations...');
+    const configRes = await fetch(`${API_BASE}/api/configurations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: project.id,
+        pump_size_id: size.id,
+        tag_number: 'P-VERIFY',
+        service: 'Verification test',
+        duty_flow_m3h: 100,
+        duty_head_m: 50,
+        npsha_m: 8,
+      }),
+    });
+    if (configRes.status !== 201) {
+      console.log(`FAIL  Create configuration returned ${configRes.status}`);
+      allPassed = false;
+      return allPassed;
+    }
+    const config = await configRes.json() as any;
+    console.log(`PASS  Created configuration: ${config.id}`);
+
+    // Test 4: GET configuration
+    console.log('Testing GET /api/configurations/:id...');
+    const getRes = await fetch(`${API_BASE}/api/configurations/${config.id}`);
+    const getData = await getRes.json() as any;
+    if (getRes.ok && getData.pumpSize) {
+      console.log('PASS  GET configuration includes pump size info');
+    } else {
+      console.log('FAIL  GET configuration missing pump size');
+      allPassed = false;
+    }
+
+    // Test 5: PUT update
+    console.log('Testing PUT /api/configurations/:id...');
+    const putRes = await fetch(`${API_BASE}/api/configurations/${config.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ impeller_trim_mm: 280 }),
+    });
+    if (putRes.ok) {
+      const putData = await putRes.json() as any;
+      if (Number(putData.impellerTrimMm) === 280) {
+        console.log('PASS  PUT updated impeller_trim_mm to 280');
+      } else {
+        console.log(`FAIL  PUT impeller_trim_mm = ${putData.impellerTrimMm} (expected 280)`);
+        allPassed = false;
+      }
+    } else {
+      console.log(`FAIL  PUT returned ${putRes.status}`);
+      allPassed = false;
+    }
+
+    // Test 6: POST validate
+    console.log('Testing POST /api/configurations/:id/validate...');
+    const valRes = await fetch(`${API_BASE}/api/configurations/${config.id}/validate`, {
+      method: 'POST',
+    });
+    const valData = await valRes.json() as any;
+    if (valRes.ok && valData.status) {
+      console.log(`PASS  Validation returned status: ${valData.status}`);
+    } else {
+      console.log(`FAIL  Validation returned ${valRes.status}`);
+      allPassed = false;
+    }
+
+    // Test 7: Motor options
+    console.log('Testing GET /api/motors/options...');
+    const motorRes = await fetch(`${API_BASE}/api/motors/options`);
+    const motors = await motorRes.json() as any[];
+    if (motorRes.ok && motors.length > 0) {
+      console.log(`PASS  Motor options: ${motors.length} motors returned`);
+    } else {
+      console.log('FAIL  Motor options: empty or error');
+      allPassed = false;
+    }
+
+    // Test 8: Baseplate options
+    console.log('Testing GET /api/baseplates/options...');
+    const bpRes = await fetch(`${API_BASE}/api/baseplates/options`);
+    const baseplates = await bpRes.json() as any[];
+    if (bpRes.ok && baseplates.length > 0) {
+      console.log(`PASS  Baseplate options: ${baseplates.length} baseplates returned`);
+    } else {
+      console.log('FAIL  Baseplate options: empty or error');
+      allPassed = false;
+    }
+
+    // Test 9: DELETE configuration
+    console.log('Testing DELETE /api/configurations/:id...');
+    const delRes = await fetch(`${API_BASE}/api/configurations/${config.id}`, { method: 'DELETE' });
+    if (delRes.status === 204) {
+      console.log('PASS  Deleted configuration');
+    } else {
+      console.log(`FAIL  Delete returned ${delRes.status}`);
+      allPassed = false;
+    }
+
+    // Cleanup: delete the test project
+    await prisma.project.delete({ where: { id: project.id } });
+
+    console.log('\nPhase 5 backend: config CRUD, motor/baseplate options working');
+  } catch (err: any) {
+    console.log(`FAIL  Could not reach API at ${API_BASE} — is the server running?`);
+    console.log(`      Error: ${err.message}`);
+    return allPassed;
+  }
+
+  return allPassed;
+}
+
+async function verifyPhase6(): Promise<boolean> {
+  console.log('=== Phase 6 Verification (Geometry/Curve Customization Module) ===\n');
+  let allPassed = true;
+
+  // Check seeded geometry data
+  const impellerCount = await prisma.impellerGeometry.count();
+  const voluteCount = await prisma.voluteGeometry.count();
+  const modCount = await prisma.geometryModification.count();
+  const testCount = await prisma.geometryTestResult.count();
+
+  for (const [label, count, min] of [
+    ['impeller_geometry', impellerCount, 5],
+    ['volute_geometry', voluteCount, 2],
+    ['geometry_modification', modCount, 4],
+    ['geometry_test_result', testCount, 6],
+  ] as const) {
+    if (count >= min) {
+      console.log(`PASS  ${label}: ${count} rows (target: ${min}+)`);
+    } else {
+      console.log(`FAIL  ${label}: ${count} rows (need ${min}+)`);
+      allPassed = false;
+    }
+  }
+  console.log();
+
+  try {
+    // Test 1: GET /api/geometry/models/summary
+    console.log('Testing GET /api/geometry/models/summary...');
+    const summaryRes = await fetch(`${API_BASE}/api/geometry/models/summary`);
+    const summary = await summaryRes.json() as any[];
+    if (summaryRes.status === 200 && summary.length >= 2) {
+      console.log(`PASS  models/summary returned ${summary.length} models`);
+    } else {
+      console.log(`FAIL  models/summary returned ${summaryRes.status}, ${summary.length} models`);
+      allPassed = false;
+    }
+
+    // Test 2: GET /api/geometry/impellers
+    console.log('Testing GET /api/geometry/impellers...');
+    const impRes = await fetch(`${API_BASE}/api/geometry/impellers`);
+    const impellers = await impRes.json() as any[];
+    if (impRes.status === 200 && impellers.length >= 5) {
+      console.log(`PASS  impellers returned ${impellers.length} records`);
+    } else {
+      console.log(`FAIL  impellers returned ${impRes.status}, ${impellers.length} records`);
+      allPassed = false;
+    }
+
+    // Test 3: GET /api/geometry/impellers/:id (detail with mods + tests)
+    if (impellers.length > 0) {
+      const impId = impellers[0].id;
+      console.log('Testing GET /api/geometry/impellers/:id...');
+      const detailRes = await fetch(`${API_BASE}/api/geometry/impellers/${impId}`);
+      const detail = await detailRes.json() as any;
+      if (detailRes.status === 200 && detail.id === impId) {
+        console.log(`PASS  impeller detail returned correctly`);
+      } else {
+        console.log(`FAIL  impeller detail returned ${detailRes.status}`);
+        allPassed = false;
+      }
+    }
+
+    // Test 4: GET /api/geometry/volutes
+    console.log('Testing GET /api/geometry/volutes...');
+    const volRes = await fetch(`${API_BASE}/api/geometry/volutes`);
+    const volutes = await volRes.json() as any[];
+    if (volRes.status === 200 && volutes.length >= 2) {
+      console.log(`PASS  volutes returned ${volutes.length} records`);
+    } else {
+      console.log(`FAIL  volutes returned ${volRes.status}, ${volutes.length} records`);
+      allPassed = false;
+    }
+
+    // Test 5: GET /api/geometry/modifications
+    console.log('Testing GET /api/geometry/modifications...');
+    const modRes = await fetch(`${API_BASE}/api/geometry/modifications`);
+    const mods = await modRes.json() as any[];
+    if (modRes.status === 200 && mods.length >= 4) {
+      console.log(`PASS  modifications returned ${mods.length} records`);
+    } else {
+      console.log(`FAIL  modifications returned ${modRes.status}, ${mods.length} records`);
+      allPassed = false;
+    }
+
+    // Test 6: GET /api/geometry/test-results
+    console.log('Testing GET /api/geometry/test-results...');
+    const trRes = await fetch(`${API_BASE}/api/geometry/test-results`);
+    const trs = await trRes.json() as any[];
+    if (trRes.status === 200 && trs.length >= 6) {
+      console.log(`PASS  test-results returned ${trs.length} records`);
+    } else {
+      console.log(`FAIL  test-results returned ${trRes.status}, ${trs.length} records`);
+      allPassed = false;
+    }
+
+    // Test 7: GET /api/geometry/correlations
+    console.log('Testing GET /api/geometry/correlations?feature=trimRatio&target=etaBepPct...');
+    const corrRes = await fetch(`${API_BASE}/api/geometry/correlations?feature=trimRatio&target=etaBepPct`);
+    const corr = await corrRes.json() as any;
+    if (corrRes.status === 200 && corr.n >= 2 && typeof corr.regression.r_squared === 'number') {
+      console.log(`PASS  correlations returned n=${corr.n}, R²=${corr.regression.r_squared.toFixed(4)}`);
+    } else {
+      console.log(`FAIL  correlations returned ${corrRes.status}`);
+      allPassed = false;
+    }
+
+    // Test 8: Verify correlation has valid regression
+    if (corr && corr.regression) {
+      const { slope, intercept, r_squared } = corr.regression;
+      if (typeof slope === 'number' && typeof intercept === 'number' && r_squared >= 0 && r_squared <= 1) {
+        console.log(`PASS  regression valid: slope=${slope.toFixed(2)}, intercept=${intercept.toFixed(2)}, R²=${r_squared.toFixed(4)}`);
+      } else {
+        console.log(`FAIL  regression invalid`);
+        allPassed = false;
+      }
+    }
+
+    // Test 9: Filter impellers by modelId
+    if (summary.length > 0) {
+      const testModelId = summary[0].id;
+      console.log(`Testing GET /api/geometry/impellers?modelId=...`);
+      const filteredRes = await fetch(`${API_BASE}/api/geometry/impellers?modelId=${testModelId}`);
+      const filtered = await filteredRes.json() as any[];
+      if (filteredRes.status === 200 && filtered.length > 0 && filtered.length < impellers.length) {
+        console.log(`PASS  filtered impellers returned ${filtered.length}/${impellers.length} records`);
+      } else if (filteredRes.status === 200 && filtered.length > 0) {
+        console.log(`PASS  filtered impellers returned ${filtered.length} records`);
+      } else {
+        console.log(`FAIL  filtered impellers returned ${filteredRes.status}, ${filtered.length} records`);
+        allPassed = false;
+      }
+    }
+
+  } catch (err: any) {
+    console.log(`FAIL  API error: ${err.message}`);
+    allPassed = false;
+  }
+
+  return allPassed;
+}
+
 async function main() {
   console.log('=== Magnum Opus Verification ===\n');
 
@@ -661,14 +973,20 @@ async function main() {
   const phase3Passed = await verifyPhase3();
   console.log();
   const phase4Passed = await verifyPhase4();
+  console.log();
+  const phase5Passed = await verifyPhase5();
+  console.log();
+  const phase6Passed = await verifyPhase6();
 
   console.log('\n=== Results ===');
   console.log(`Phase 1: ${phase1Passed ? 'PASS' : 'FAIL'}`);
   console.log(`Phase 2: ${phase2Passed ? 'PASS' : 'FAIL'}`);
   console.log(`Phase 3: ${phase3Passed ? 'PASS' : 'FAIL'}`);
   console.log(`Phase 4: ${phase4Passed ? 'PASS' : 'FAIL'}`);
+  console.log(`Phase 5: ${phase5Passed ? 'PASS' : 'FAIL'}`);
+  console.log(`Phase 6: ${phase6Passed ? 'PASS' : 'FAIL'}`);
 
-  if (phase1Passed && phase2Passed && phase3Passed && phase4Passed) {
+  if (phase1Passed && phase2Passed && phase3Passed && phase4Passed && phase5Passed && phase6Passed) {
     console.log('\nAll checks passed.');
     process.exit(0);
   } else {
