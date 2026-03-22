@@ -33,10 +33,10 @@ export function ComplianceTab({ config }: Props) {
   }, {} as Record<string, typeof validation.messages>) ?? {};
 
   const tiers = [
-    { key: 'hard_block', label: 'Hard Blocks', icon: '\uD83D\uDD34', desc: 'Must fix before proceeding' },
-    { key: 'cert_block', label: 'Certification Blocks', icon: '\uD83D\uDFE0', desc: 'Certification violation' },
-    { key: 'warning', label: 'Warnings', icon: '\uD83D\uDFE1', desc: 'Should review' },
-    { key: 'advisory', label: 'Advisories', icon: '\uD83D\uDD35', desc: 'Informational' },
+    { key: 'hard_block', summaryKey: 'hard_blocks', label: 'Hard Blocks', icon: '\uD83D\uDD34', desc: 'Must fix before proceeding' },
+    { key: 'cert_block', summaryKey: 'cert_blocks', label: 'Certification Blocks', icon: '\uD83D\uDFE0', desc: 'Certification violation' },
+    { key: 'warning', summaryKey: 'warnings', label: 'Warnings', icon: '\uD83D\uDFE1', desc: 'Should review' },
+    { key: 'advisory', summaryKey: 'advisories', label: 'Advisories', icon: '\uD83D\uDD35', desc: 'Informational' },
   ];
 
   return (
@@ -63,7 +63,7 @@ export function ComplianceTab({ config }: Props) {
           <div className="grid grid-cols-4 gap-3">
             {tiers.map(t => (
               <div key={t.key} className="p-3 border border-zinc-800 rounded-lg bg-zinc-900 text-center">
-                <div className="text-2xl font-mono">{validation.summary[t.key as keyof typeof validation.summary] ?? 0}</div>
+                <div className="text-2xl font-mono">{validation.summary[t.summaryKey as keyof typeof validation.summary] ?? 0}</div>
                 <div className="text-xs text-zinc-400 mt-1">{t.label}</div>
               </div>
             ))}

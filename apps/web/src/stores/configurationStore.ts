@@ -17,6 +17,12 @@ export interface ConfigurationData {
   numStages: number;
   motorOptionId: string | null;
   baseplateId: string | null;
+  baseplateFrameType: string | null;
+  baseplateMaterial: string | null;
+  baseplateHasDripRim: boolean;
+  baseplateHasDrain: boolean;
+  baseplateGroutType: string | null;
+  baseplateDomestic: boolean;
   validationStatus: string;
   validationMessages: any[];
   pumpSize: {

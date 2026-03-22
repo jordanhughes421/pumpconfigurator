@@ -85,6 +85,8 @@ router.put('/:id', async (req, res, next) => {
     const {
       tag_number, service, impeller_trim_mm, speed_rpm, num_stages,
       motor_option_id, baseplate_id, seal_type, seal_plan, coupling_type,
+      baseplate_frame_type, baseplate_material, baseplate_has_drip_rim,
+      baseplate_has_drain, baseplate_grout_type, baseplate_domestic,
       material_selections,
     } = req.body;
 
@@ -99,6 +101,12 @@ router.put('/:id', async (req, res, next) => {
     if (seal_type !== undefined) data.sealType = seal_type;
     if (seal_plan !== undefined) data.sealPlan = seal_plan;
     if (coupling_type !== undefined) data.couplingType = coupling_type;
+    if (baseplate_frame_type !== undefined) data.baseplateFrameType = baseplate_frame_type;
+    if (baseplate_material !== undefined) data.baseplateMaterial = baseplate_material;
+    if (baseplate_has_drip_rim !== undefined) data.baseplateHasDripRim = baseplate_has_drip_rim;
+    if (baseplate_has_drain !== undefined) data.baseplateHasDrain = baseplate_has_drain;
+    if (baseplate_grout_type !== undefined) data.baseplateGroutType = baseplate_grout_type;
+    if (baseplate_domestic !== undefined) data.baseplateDomestic = baseplate_domestic;
 
     const config = await prisma.pumpConfigurationRecord.update({
       where: { id: req.params.id },
@@ -135,6 +143,19 @@ router.put('/:id', async (req, res, next) => {
           },
         });
       }
+
+      // Re-fetch to include updated material selections
+      const updated = await prisma.pumpConfigurationRecord.findUnique({
+        where: { id: req.params.id },
+        include: {
+          pumpSize: { include: { model: { include: { family: true } } } },
+          materialSelections: { include: { material: true } },
+          motor: true,
+          baseplate: true,
+        },
+      });
+      res.json(updated);
+      return;
     }
 
     res.json(config);

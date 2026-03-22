@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiGet, apiPost } from '../lib/api';
 import { useConfigurationStore, type ConfigurationData } from '../stores/configurationStore';
 import type { CertificationCode } from '@magnum-opus/shared';
@@ -51,18 +51,24 @@ export function MaterialsTab({ config, certs }: Props) {
   const [invalidKeys, setInvalidKeys] = useState<Set<string>>(new Set());
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const { updateConfiguration } = useConfigurationStore();
+  const selectionsRef = useRef(selections);
+  selectionsRef.current = selections;
+  const initializedRef = useRef(false);
 
   // Load component definitions
   useEffect(() => {
-    apiGet<ComponentDef[]>(`/api/components?hiTypeCode=${hiType}`)
+    apiGet<ComponentDef[]>(`/api/components/${hiType}`)
       .then(comps => {
         const sorted = comps.sort((a, b) => a.displayOrder - b.displayOrder);
         setComponents(sorted);
       });
   }, [hiType]);
 
-  // Initialize selections from config
+  // Initialize selections from config (only once on mount)
   useEffect(() => {
+    if (initializedRef.current) return;
+    if (config.materialSelections.length === 0) return;
+    initializedRef.current = true;
     const sel: Record<string, string> = {};
     for (const ms of config.materialSelections) {
       sel[ms.componentKey] = ms.materialId;
@@ -70,7 +76,7 @@ export function MaterialsTab({ config, certs }: Props) {
     setSelections(sel);
   }, [config.materialSelections]);
 
-  // Fetch material options for all components
+  // Fetch material options for all components (only when components/certs/temp change, NOT selections)
   const fetchAllOptions = useCallback(async () => {
     if (components.length === 0) return;
     const certParam = certs.length > 0 ? `&certs=${certs.join(',')}` : '';
@@ -85,8 +91,8 @@ export function MaterialsTab({ config, certs }: Props) {
         );
         map[comp.componentKey] = data.materials;
 
-        // Check if current selection is still valid
-        const currentSel = selections[comp.componentKey];
+        // Check if current selection is still valid (use ref to avoid dep cycle)
+        const currentSel = selectionsRef.current[comp.componentKey];
         if (currentSel && !data.materials.some(m => m.id === currentSel)) {
           newInvalid.add(comp.componentKey);
         }
@@ -97,34 +103,37 @@ export function MaterialsTab({ config, certs }: Props) {
 
     setOptionsMap(map);
     setInvalidKeys(newInvalid);
-  }, [components, certs, config.fluidTempC, selections]);
+  }, [components, certs, config.fluidTempC]);
 
   useEffect(() => { fetchAllOptions(); }, [fetchAllOptions]);
 
-  // Auto-select defaults for unset components
+  // Auto-select defaults for unset components and persist to backend
   useEffect(() => {
     if (Object.keys(optionsMap).length === 0) return;
-    const newSel = { ...selections };
-    let changed = false;
+    const prev = selectionsRef.current;
+    const newSel = { ...prev };
+    const newEntries: { component_key: string; material_id: string }[] = [];
     for (const comp of components) {
       if (!newSel[comp.componentKey]) {
         const opts = optionsMap[comp.componentKey] || [];
         const def = opts.find(m => m.is_default) || opts[0];
         if (def) {
           newSel[comp.componentKey] = def.id;
-          changed = true;
+          newEntries.push({ component_key: comp.componentKey, material_id: def.id });
         }
       }
     }
-    if (changed) setSelections(newSel);
-  }, [optionsMap, components, selections]);
+    if (newEntries.length > 0) {
+      setSelections(newSel);
+      updateConfiguration(config.id, { material_selections: newEntries });
+    }
+  }, [optionsMap, components, config.id, updateConfiguration]);
 
   const handleSelect = (componentKey: string, materialId: string) => {
-    const newSel = { ...selections, [componentKey]: materialId };
-    setSelections(newSel);
+    setSelections(prev => ({ ...prev, [componentKey]: materialId }));
     setInvalidKeys(prev => { const s = new Set(prev); s.delete(componentKey); return s; });
 
-    // Save to backend
+    // Save to backend (fire-and-forget, don't let response overwrite local state)
     updateConfiguration(config.id, {
       material_selections: [{ component_key: componentKey, material_id: materialId }],
     });

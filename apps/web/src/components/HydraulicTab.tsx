@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useCurveStore } from '../stores/curveStore';
 import { useConfigurationStore, type ConfigurationData } from '../stores/configurationStore';
 import { HQChart } from './HQChart';
@@ -24,13 +24,25 @@ export function HydraulicTab({ config }: Props) {
   const [localHStatic, setLocalHStatic] = useState(systemHStatic ?? 30);
   const [localK, setLocalK] = useState(systemKFriction ?? 0.002);
 
-  // Fetch curves on mount
+  // Fetch curves on mount — pass duty point so store can auto-select optimal trim
   useEffect(() => {
-    fetchCurves(config.pumpSizeId);
-  }, [config.pumpSizeId, fetchCurves]);
+    fetchCurves(
+      config.pumpSizeId,
+      Number(config.dutyFlowM3h),
+      Number(config.dutyHeadM),
+      minD,
+      maxD,
+    );
+  }, [config.pumpSizeId, config.dutyFlowM3h, config.dutyHeadM, minD, maxD, fetchCurves]);
 
-  // Initialize trim/speed from config
+  // On first render, skip saved trim/speed override so auto-trim takes effect.
+  // On subsequent config changes (e.g., after save), apply saved values.
+  const initialLoadRef = useRef(true);
   useEffect(() => {
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return;
+    }
     if (config.impellerTrimMm) setTrim(Number(config.impellerTrimMm));
     if (config.speedRpm) setSpeed(config.speedRpm);
   }, [config.impellerTrimMm, config.speedRpm, setTrim, setSpeed]);
@@ -97,7 +109,23 @@ export function HydraulicTab({ config }: Props) {
       <div className="space-y-4">
         {/* Impeller Trim */}
         <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900">
-          <h4 className="text-xs text-zinc-400 font-medium mb-2">Impeller Trim</h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs text-zinc-400 font-medium">Impeller Trim</h4>
+            <button
+              onClick={() => {
+                fetchCurves(
+                  config.pumpSizeId,
+                  Number(config.dutyFlowM3h),
+                  Number(config.dutyHeadM),
+                  minD,
+                  maxD,
+                );
+              }}
+              className="text-[10px] text-blue-400 hover:text-blue-300"
+            >
+              Auto Trim
+            </button>
+          </div>
           <input
             type="range"
             min={minD}

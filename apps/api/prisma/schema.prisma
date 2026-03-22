@@ -383,6 +383,13 @@ model PumpConfigurationRecord {
   sealType           String?  @map("seal_type") @db.VarChar(30)
   sealPlan           String?  @map("seal_plan") @db.VarChar(20)
   couplingType       String?  @map("coupling_type") @db.VarChar(30)
+  // Baseplate customization
+  baseplateFrameType String?  @map("baseplate_frame_type") @db.VarChar(30)
+  baseplateMaterial  String?  @map("baseplate_material") @db.VarChar(50)
+  baseplateHasDripRim Boolean @default(false) @map("baseplate_has_drip_rim")
+  baseplateHasDrain  Boolean  @default(false) @map("baseplate_has_drain")
+  baseplateGroutType String?  @map("baseplate_grout_type") @db.VarChar(30)
+  baseplateDomestic  Boolean  @default(false) @map("baseplate_domestic")
   numStages          Int      @default(1) @map("num_stages")
   dutyFlowM3h        Decimal  @map("duty_flow_m3h") @db.Decimal(10, 2)
   dutyHeadM          Decimal  @map("duty_head_m") @db.Decimal(10, 2)
