@@ -43,9 +43,9 @@ pumpconfigurator/
 │   │   └── scripts/verify.ts # Smoke tests for all phases (1-6)
 │   ├── web/          # React 18 + Vite + Tailwind + Zustand + D3.js (Phase 5-6 complete)
 │   │   └── src/
-│   │       ├── pages/        # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, ModelGeometry, ImpellerDetail, VoluteDetail, Correlations
+│   │       ├── pages/        # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, ModelGeometry, ImpellerDetail, VoluteDetail, Correlations, Catalog
 │   │       ├── components/   # HQChart, HydraulicTab, MaterialsTab, MotorTab, BaseplateTab, ComplianceTab, CertificationBar
-│   │       ├── stores/       # Zustand: project, selection, configuration, curve, geometry
+│   │       ├── stores/       # Zustand: project, selection, configuration, curve, geometry, catalog
 │   │       └── lib/          # API client (apiGet, apiPost, apiPut, apiDelete)
 │   └── compute/      # Python microservice (future)
 ├── packages/
@@ -67,7 +67,7 @@ pumpconfigurator/
 3. **Performance Curve Engine** ✅ — Polynomial/spline/linear evaluation, affinity law scaling (speed + trim), Brent's method operating point solver, 3 API endpoints, sample curves for all 12 sizes
 4. **Material Selection & Certification Engine** ✅ — 5-step material filtering pipeline, 14 certification rules (NSF61/372/BABA/FM/API610/ATEX/etc.), validation engine (completeness, lead average, BABA, galvanic), 83 component-material options, 32 cert mappings
 5. **Configuration UI** ✅ — React 18 + Vite + Tailwind + Zustand + D3.js, project/config CRUD, tabbed configurator (Hydraulic, Materials, Motor, Baseplate, Compliance), interactive H-Q chart with client-side curve scaling, motor/baseplate seed data, CORS
-6. **Geometry/Curve Customization Module** ✅ — Impeller/volute geometry CRUD, modification tracking with before/after diffs, test results, correlation analysis with linear regression, D3 scatter chart, geometry dashboard and detail pages
+6. **Geometry/Curve Customization Module** ✅ — Impeller/volute geometry CRUD, modification tracking with before/after diffs, test results with before/after data points (up to 20 pts) and D3 overlay charts, correlation analysis with linear regression, D3 scatter chart, geometry dashboard and detail pages with full CRUD (edit/delete), catalog browsing page, expanded API DELETE endpoints with cascade deletes
 
 ## Critical Domain Rules
 

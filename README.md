@@ -96,11 +96,13 @@ The API runs at `http://localhost:3001`. The frontend runs at `http://localhost:
 |----------|--------|-------------|
 | `/api/geometry/models/summary` | GET | Models with geometry data counts |
 | `/api/geometry/impellers` | GET/POST | List/create impeller geometries (`?modelId=` filter) |
-| `/api/geometry/impellers/:id` | GET/PUT | Impeller detail with modifications and test results |
+| `/api/geometry/impellers/:id` | GET/PUT/DELETE | Impeller detail with modifications and test results (cascade deletes) |
 | `/api/geometry/volutes` | GET/POST | List/create volute geometries (`?modelId=` filter) |
-| `/api/geometry/volutes/:id` | GET/PUT | Volute detail with modifications and test results |
+| `/api/geometry/volutes/:id` | GET/PUT/DELETE | Volute detail with modifications and test results (cascade deletes) |
 | `/api/geometry/modifications` | GET/POST | Modification history (`?impellerGeometryId=` / `?voluteGeometryId=` filter) |
-| `/api/geometry/test-results` | GET/POST | Test results (`?impellerGeometryId=` filter) |
+| `/api/geometry/modifications/:id` | PUT/DELETE | Update/delete a modification |
+| `/api/geometry/test-results` | GET/POST | Test results with before/after data points (`?impellerGeometryId=` / `?voluteGeometryId=` filter) |
+| `/api/geometry/test-results/:id` | PUT/DELETE | Update/delete a test result |
 | `/api/geometry/correlations` | GET | Linear regression: `?feature=trimRatio&target=etaBepPct&modelId=` |
 
 ### Reference Data (Phase 1)
@@ -172,9 +174,9 @@ pumpconfigurator/
 │   │       └── verify.ts       # Smoke tests (Phase 1–6)
 │   ├── web/                    # React 18 + Vite + Tailwind CSS + Zustand + D3.js
 │   │   └── src/
-│   │       ├── pages/          # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, Correlations
+│   │       ├── pages/          # ProjectList, ProjectDetail, Selection, Configurator, GeometryDashboard, ModelGeometry, ImpellerDetail, VoluteDetail, Correlations, Catalog
 │   │       ├── components/     # HQChart, HydraulicTab, MaterialsTab, MotorTab, BaseplateTab, ComplianceTab, CertificationBar
-│   │       ├── stores/         # Zustand stores: project, selection, configuration, curve, geometry
+│   │       ├── stores/         # Zustand stores: project, selection, configuration, curve, geometry, catalog
 │   │       └── lib/            # API client
 │   └── compute/                # Python microservice (future)
 ├── packages/
@@ -204,7 +206,7 @@ The database ships with sample data clearly labeled with `[SAMPLE]` prefixes:
 | `impeller_geometry` | 5 | 3 OH1 + 2 BB1 impeller revisions |
 | `volute_geometry` | 2 | OH1 single volute + BB1 double volute |
 | `geometry_modification` | 4 | Trim, vane backfile, cutwater file, eye boreout |
-| `geometry_test_result` | 6 | Factory/field test results with BEP performance |
+| `geometry_test_result` | 6 | Factory/field test results with BEP performance and before/after data points |
 
 Full data import stubs exist at `apps/api/prisma/seed/importers/` for the complete 380+ components, 117+ materials, and certification mappings from the Magnum Opus spec.
 
@@ -220,7 +222,8 @@ The React frontend provides a full configuration workflow:
   - **Motor** — Motor selection table filtered by power requirements and certifications
   - **Baseplate** — Baseplate type selection cards
   - **Compliance** — Four-tier validation (hard_block/cert_block/warning/advisory) with configuration summary
-- **Geometry** — Impeller/volute geometry dashboard, modification history with before/after diffs, test result tracking, correlation scatter chart with linear regression
+- **Geometry** — Impeller/volute geometry dashboard with full CRUD (create/edit/delete), modification history with before/after geometry diffs, test results with up to 20 before/after data points (H, Q, P, η, NPSHr), D3 before/after overlay charts with interactive crosshair, correlation scatter chart with linear regression
+- **Catalog** — Browse pump families, models, sizes, curves, and component definitions
 
 ## Phase Status
 
@@ -229,4 +232,5 @@ The React frontend provides a full configuration workflow:
 - **Phase 3** ✓ Performance curve engine — polynomial/spline evaluation, affinity law scaling, Brent's method operating point solver
 - **Phase 4** ✓ Material selection & certification engine — per-component filtering, 14 cert rules, validation (completeness/lead/BABA/galvanic)
 - **Phase 5** ✓ Configuration UI — React 18 + Vite + Tailwind + Zustand + D3.js, tabbed configurator, client-side curve scaling, CORS integration
-- **Phase 6** ✓ Geometry/curve customization module — impeller/volute geometry CRUD, modification tracking, test results, correlation analysis with linear regression
+- **Phase 6** ✓ Geometry/curve customization module — impeller/volute geometry CRUD, modification tracking with before/after diffs, test results with before/after data points and D3 overlay charts, correlation analysis with linear regression
+- **Phase 6+** ✓ Full geometry CRUD UI — edit/delete on all geometry pages, before/after test data points (up to 20 pts), catalog browsing, expanded API routes with DELETE endpoints and cascade deletes
