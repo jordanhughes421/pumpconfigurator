@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Magnum Opus** — a web-based rotodynamic pump selection, configuration, and performance modeling application. Users input a duty point (flow, head, NPSH, fluid), select certifications, and the system returns ranked pump candidates. Users configure each pump with per-component materials, motor/driver, baseplate, seal, and view real-time performance curves with interactive trim/speed sliders. The system validates all constraints and produces a compliance-audited configuration.
 
-## Specification Documents
+## Key Documents
 
-Two spec documents live in the repo root — read these before building anything:
-
-- **`Magnum Opus - Implementation Spec for Claude Code.md`** — Actionable build spec: schemas, interfaces, algorithms, component trees, phased build plan. This tells you WHAT to build.
+- **`ROADMAP.md`** — Feature roadmap organized by priority tier (P0-P3) and milestone. This tells you WHAT to build next.
+- **`docs/M0 - Component Catalog, Properties, and Lubrication Spec.md`** — Active build spec for M0: component part numbers/drawings, configurable properties, lubrication system, selection engine bug fix. Read this before starting M0 work.
 - **`Magnum Opus - Comprehensive Pump Design and Configuration Application.md`** — Full engineering reference (~4,400 lines, 9 sections, 4 appendices). This tells you WHY. Consult it for domain context, engineering rationale, certification constraint details, and seed data (Appendix B: 117+ materials, Section 1.5: 380+ component definitions).
+- **`docs/archive/Magnum Opus - Implementation Spec for Claude Code.md`** — Original build spec (Phases 1-6, now complete). Archived for reference.
 
 ## Tech Stack (as implemented)
 
