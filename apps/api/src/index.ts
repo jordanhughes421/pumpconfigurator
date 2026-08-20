@@ -12,9 +12,24 @@ import baseplatesRouter from './routes/baseplates.js';
 import geometryRouter from './routes/geometry.js';
 
 const app = express();
-const PORT = process.env.API_PORT ? parseInt(process.env.API_PORT) : 3001;
+const PORT = parseInt(process.env.PORT || process.env.API_PORT || '3001', 10);
+const allowedOrigins = (process.env.WEB_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({
+  origin(origin, callback) {
+    // Requests without an Origin header (curl, health checks, server-to-server)
+    // are not browser CORS requests and should be allowed.
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, false);
+  },
+}));
 app.use(express.json());
 
 // --- Health ---
@@ -41,7 +56,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 app.listen(PORT, () => {
-  console.log(`Magnum Opus API running on http://localhost:${PORT}`);
+  console.log(`Magnum Opus API running on port ${PORT}`);
 });
 
 export default app;
